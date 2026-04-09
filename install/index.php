@@ -26,7 +26,8 @@ function checkRequirements(): array {
         $checks[] = ['name' => "Extension: {$ext}", 'pass' => extension_loaded($ext), 'value' => extension_loaded($ext) ? 'Enabled' : 'Missing'];
     }
     $checks[] = ['name' => 'config/ writable', 'pass' => is_writable(dirname(__DIR__) . '/config'), 'value' => is_writable(dirname(__DIR__) . '/config') ? 'Writable' : 'Not writable'];
-    $checks[] = ['name' => 'storage/ writable', 'pass' => is_writable(dirname(__DIR__)) || true, 'value' => 'OK'];
+    $storageWritable = is_writable(dirname(__DIR__));
+    $checks[] = ['name' => 'storage/ writable', 'pass' => $storageWritable, 'value' => $storageWritable ? 'Writable' : 'Not writable'];
     return $checks;
 }
 
