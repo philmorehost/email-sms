@@ -290,6 +290,7 @@ CREATE TABLE IF NOT EXISTS sms_credit_packages (
     name VARCHAR(100) NOT NULL,
     credits INT NOT NULL,
     price DECIMAL(10,2) NOT NULL,
+    billing_period ENUM('one_time','monthly','quarterly','yearly') NOT NULL DEFAULT 'one_time',
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -366,3 +367,22 @@ CREATE TABLE IF NOT EXISTS sms_caller_ids (
     status ENUM('pending','approved','rejected') DEFAULT 'pending',
     submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- SMS Credit Purchase Requests (user-initiated, admin-approved)
+CREATE TABLE IF NOT EXISTS sms_purchase_requests (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    package_id INT NOT NULL,
+    status ENUM('pending','approved','rejected') DEFAULT 'pending',
+    notes VARCHAR(255),
+    requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    processed_at TIMESTAMP NULL,
+    processed_by INT NULL,
+    INDEX idx_user_req (user_id),
+    INDEX idx_status_req (status)
+);
+
+-- Default SMS price per unit/page and other app settings defaults
+INSERT INTO app_settings (setting_key, setting_value) VALUES
+    ('sms_price_per_unit', '6.50')
+ON DUPLICATE KEY UPDATE setting_key = setting_key;

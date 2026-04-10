@@ -14,6 +14,49 @@ requireAuth();
 $db   = getDB();
 $user = getCurrentUser();
 
+// ── SMS billing helpers ──────────────────────────────────────────────────────
+
+/**
+ * Calculate the number of SMS pages (units) for a given message.
+ * Single page: up to 160 characters.
+ * Multi-page: each page = 153 characters.
+ */
+function calculateSmsPages(string $message): int {
+    $len = mb_strlen($message);
+    if ($len <= 0) return 0;
+    if ($len <= 160) return 1;
+    return (int)ceil($len / 153);
+}
+
+function getSmsUnitPrice(PDO $db): float {
+    try {
+        $stmt = $db->prepare("SELECT setting_value FROM app_settings WHERE setting_key = 'sms_price_per_unit'");
+        $stmt->execute();
+        $row = $stmt->fetch();
+        return $row ? (float)$row['setting_value'] : 0.0;
+    } catch (\Exception $e) { return 0.0; }
+}
+
+function getUserSmsBalance(PDO $db, int $userId): float {
+    try {
+        $stmt = $db->prepare("SELECT credits FROM user_sms_wallet WHERE user_id = ?");
+        $stmt->execute([$userId]);
+        $row = $stmt->fetch();
+        return $row ? (float)$row['credits'] : 0.0;
+    } catch (\Exception $e) { return 0.0; }
+}
+
+function debitSmsWallet(PDO $db, int $userId, float $amount, int $campaignId): void {
+    if ($amount <= 0 || $userId <= 0) return;
+    try {
+        $db->prepare("INSERT INTO user_sms_wallet (user_id, credits) VALUES (?, 0) ON DUPLICATE KEY UPDATE user_id = user_id")->execute([$userId]);
+        $db->prepare("UPDATE user_sms_wallet SET credits = GREATEST(0, credits - ?), updated_at = NOW() WHERE user_id = ?")->execute([$amount, $userId]);
+        $db->prepare("INSERT INTO sms_credit_transactions (user_id, amount, type, description, reference) VALUES (?, ?, 'debit', ?, ?)")->execute([$userId, $amount, "SMS campaign #{$campaignId}", "campaign_{$campaignId}"]);
+    } catch (\Exception $e) {
+        error_log('debitSmsWallet error: ' . $e->getMessage());
+    }
+}
+
 $msg     = '';
 $msgType = 'success';
 
@@ -119,6 +162,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $msgType = 'error';
                         } else {
                             $recipientStr = implode(',', $phones);
+
+                            // ── Wallet debit for non-admin users ─────────────────────────
+                            $isAdminUser = in_array($user['role'] ?? '', ['superadmin', 'admin'], true);
+                            $unitPrice   = getSmsUnitPrice($db);
+                            $msgPages    = in_array($route, ['voice', 'voice_audio'], true)
+                                ? 1
+                                : calculateSmsPages($route === 'voice_audio' ? ($audioUrl ?? '') : ($message ?? ''));
+                            $totalCost   = ($unitPrice > 0 && !$isAdminUser)
+                                ? round($msgPages * $totalRecipients * $unitPrice, 2)
+                                : 0.0;
+                            $userBalance = $totalCost > 0
+                                ? getUserSmsBalance($db, (int)($user['id'] ?? 0))
+                                : PHP_FLOAT_MAX;
+
+                            if ($totalCost > 0 && $userBalance < $totalCost) {
+                                $db->prepare("UPDATE sms_campaigns SET status='failed' WHERE id=?")->execute([$campaignId]);
+                                $msg     = sprintf(
+                                    'Insufficient wallet balance. This campaign requires ₦%.2f (%d page%s × %d recipient%s × ₦%.2f). Your balance: ₦%.2f. Please top up your credits.',
+                                    $totalCost,
+                                    $msgPages, $msgPages !== 1 ? 's' : '',
+                                    $totalRecipients, $totalRecipients !== 1 ? 's' : '',
+                                    $unitPrice,
+                                    $userBalance
+                                );
+                                $msgType = 'error';
+                            } else {
                             $db->prepare("UPDATE sms_campaigns SET status='sending' WHERE id=?")->execute([$campaignId]);
 
                             $result = match ($route) {
@@ -145,6 +214,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             )->execute([$finalStatus, $sentCount, $failedCount, $campaignId]);
 
                             if ($finalStatus === 'sent') {
+                                if ($totalCost > 0) {
+                                    debitSmsWallet($db, (int)($user['id'] ?? 0), $totalCost, $campaignId);
+                                }
                                 $msg     = "Campaign sent to {$sentCount} recipient(s).";
                                 $msgType = 'success';
                             } else {
@@ -152,6 +224,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 $msg       = "Campaign failed to send: {$errDetail}";
                                 $msgType   = 'error';
                             }
+                            } // end balance check
                         }
                     } elseif ($scheduleType === 'later') {
                         $stmt = $db->prepare(
@@ -238,6 +311,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $senderOrCaller = $campaign['sender_id'];
                             $msgText      = $campaign['message'];
 
+                            // ── Wallet debit for non-admin users ─────────────────────────
+                            $isAdminUser2 = in_array($user['role'] ?? '', ['superadmin', 'admin'], true);
+                            $unitPrice2   = getSmsUnitPrice($db);
+                            $isVoiceAudio2 = ($dbRoute === 'voice' && filter_var($msgText, FILTER_VALIDATE_URL) !== false);
+                            $msgPages2     = ($dbRoute === 'voice' || $isVoiceAudio2) ? 1 : calculateSmsPages($msgText);
+                            $total         = count($phones);
+                            $totalCost2    = ($unitPrice2 > 0 && !$isAdminUser2)
+                                ? round($msgPages2 * $total * $unitPrice2, 2)
+                                : 0.0;
+                            $userBalance2  = $totalCost2 > 0
+                                ? getUserSmsBalance($db, (int)($user['id'] ?? 0))
+                                : PHP_FLOAT_MAX;
+
+                            if ($totalCost2 > 0 && $userBalance2 < $totalCost2) {
+                                $db->prepare("UPDATE sms_campaigns SET status='failed', failed_count=?, sent_at=NOW() WHERE id=?")->execute([$total, $id]);
+                                $msg     = sprintf(
+                                    'Insufficient balance. Need ₦%.2f, available ₦%.2f. Top up your credits first.',
+                                    $totalCost2, $userBalance2
+                                );
+                                $msgType = 'error';
+                            } else {
                             $db->prepare("UPDATE sms_campaigns SET status='sending' WHERE id=?")->execute([$id]);
 
                             // voice_audio campaigns are stored with route='voice' and message=audioUrl;
@@ -253,11 +347,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 default                  => ['success' => false, 'message' => 'Unknown route'],
                             };
 
-                            $total = count($phones);
                             if (!empty($result['success'])) {
                                 $db->prepare(
                                     "UPDATE sms_campaigns SET status='sent', sent_count=?, failed_count=0, sent_at=NOW() WHERE id=?"
                                 )->execute([$total, $id]);
+                                if ($totalCost2 > 0) {
+                                    debitSmsWallet($db, (int)($user['id'] ?? 0), $totalCost2, $id);
+                                }
                                 $msg     = "Campaign sent to {$total} recipient(s).";
                                 $msgType = 'success';
                             } else {
@@ -268,6 +364,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 $msg       = "Campaign failed: {$errDetail}";
                                 $msgType   = 'error';
                             }
+                            } // end balance check
                         }
                     }
                 }

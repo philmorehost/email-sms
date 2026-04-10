@@ -30,6 +30,9 @@ $theme = $_COOKIE['theme'] ?? 'dark';
             <a href="/dashboard.php" class="nav-item <?= $activePage === 'dashboard' ? 'active' : '' ?>">
                 <span class="nav-icon">🏠</span><span class="nav-label">Dashboard</span>
             </a>
+            <a href="/billing.php" class="nav-item <?= $activePage === 'billing' ? 'active' : '' ?>">
+                <span class="nav-icon">💳</span><span class="nav-label">SMS Credits</span>
+            </a>
         </div>
 
         <div class="nav-section">

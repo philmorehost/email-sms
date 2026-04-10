@@ -211,6 +211,7 @@ require_once __DIR__ . '/../includes/layout_header.php';
     <a href="/admin/billing.php?tab=overview"       class="tab-btn <?= $activeTab === 'overview'       ? 'active' : '' ?>">Overview</a>
     <a href="/admin/billing.php?tab=transactions"   class="tab-btn <?= $activeTab === 'transactions'   ? 'active' : '' ?>">Transactions</a>
     <a href="/admin/billing.php?tab=subscriptions"  class="tab-btn <?= $activeTab === 'subscriptions'  ? 'active' : '' ?>">Subscriptions</a>
+    <a href="/admin/plans.php?tab=purchase_requests" class="tab-btn">Purchase Requests</a>
 </div>
 
 <!-- OVERVIEW TAB -->
@@ -241,7 +242,7 @@ require_once __DIR__ . '/../includes/layout_header.php';
                         <select name="package_id" class="form-control" id="packageSelect" onchange="toggleCustomAmount(this.value)">
                             <option value="0">Custom Amount</option>
                             <?php foreach ($activePackages as $pkg): ?>
-                            <option value="<?= (int)$pkg['id'] ?>"><?= htmlspecialchars($pkg['name']) ?> — <?= number_format((int)$pkg['credits']) ?> credits ($<?= number_format((float)$pkg['price'],2) ?>)</option>
+                            <option value="<?= (int)$pkg['id'] ?>"><?= htmlspecialchars($pkg['name']) ?> — <?= number_format((int)$pkg['credits']) ?> credits (₦<?= number_format((float)$pkg['price'],2) ?>)</option>
                             <?php endforeach; ?>
                         </select>
                     </div>
