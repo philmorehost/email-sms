@@ -134,15 +134,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $msg = 'Sender ID must be 1–11 alphanumeric characters.'; $msgType = 'error';
             } else {
                 try {
-                    // Check for duplicate for this user
+                    // Check if this user already submitted this ID
                     $chk = $db->prepare("SELECT id FROM sms_sender_ids WHERE user_id=? AND sender_id=?");
                     $chk->execute([$uid, $sid]);
                     if ($chk->fetch()) {
                         $msg = 'You have already submitted this Sender ID.'; $msgType = 'error';
                     } else {
-                        $db->prepare("INSERT INTO sms_sender_ids (user_id, sender_id, sample_message, status, submitted_at) VALUES (?,?,?,'pending',NOW())")
-                           ->execute([$uid, $sid, $sample]);
-                        $msg = '✅ Sender ID submitted for approval. An admin will review it shortly.';
+                        // Check if ID already taken by another user
+                        $taken = $db->prepare("SELECT id FROM sms_sender_ids WHERE sender_id=?");
+                        $taken->execute([$sid]);
+                        if ($taken->fetch()) {
+                            $msg = 'This Sender ID is already registered. Please choose a different one.'; $msgType = 'error';
+                        } else {
+                            $db->prepare("INSERT INTO sms_sender_ids (user_id, sender_id, sample_message, status, submitted_at) VALUES (?,?,?,'pending',NOW())")
+                               ->execute([$uid, $sid, $sample]);
+                            $msg = '✅ Sender ID submitted for approval. An admin will review it shortly.';
+                        }
                     }
                 } catch (\Exception $e) {
                     error_log('register_sender_id: ' . $e->getMessage());
