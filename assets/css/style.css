@@ -978,3 +978,51 @@ input[type=checkbox] {
     .stats-grid { grid-template-columns: 1fr; }
     .modal { max-height: 95vh; }
 }
+
+/* ─── Theme Toggle Button ────────────────────────────────────────── */
+.theme-toggle {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-sm);
+    padding: 0.5rem;
+    cursor: pointer;
+    color: var(--text-primary);
+    font-size: 1.1rem;
+    transition: var(--transition);
+    display: flex; align-items: center; justify-content: center;
+}
+.theme-toggle:hover { background: var(--glass-hover); }
+
+/* ─── Light Theme ────────────────────────────────────────────────── */
+[data-theme="light"] {
+    --bg-primary: #f0f2f5;
+    --bg-secondary: #ffffff;
+    --glass-bg: rgba(0,0,0,0.04);
+    --glass-border: rgba(0,0,0,0.10);
+    --glass-hover: rgba(0,0,0,0.06);
+    --text-primary: #1a1a2e;
+    --text-secondary: #4a4a6a;
+    --text-muted: #8a8a9a;
+    --sidebar-bg: rgba(240,242,245,0.98);
+}
+
+[data-theme="light"] body {
+    background: var(--bg-primary);
+    background-image:
+        radial-gradient(ellipse at 15% 50%, rgba(108,99,255,0.06) 0%, transparent 50%),
+        radial-gradient(ellipse at 85% 15%, rgba(0,212,255,0.04) 0%, transparent 50%);
+}
+
+[data-theme="light"] .sidebar {
+    background: var(--sidebar-bg);
+}
+
+[data-theme="light"] .login-card {
+    background: rgba(255,255,255,0.95);
+    border: 1px solid rgba(0,0,0,0.1);
+}
+
+[data-theme="light"] .card {
+    background: rgba(255,255,255,0.9);
+    border-color: rgba(0,0,0,0.08);
+}

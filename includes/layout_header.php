@@ -3,9 +3,10 @@
 if (!isset($pageTitle)) $pageTitle = 'Dashboard';
 if (!isset($activePage)) $activePage = '';
 if (!isset($user)) $user = getCurrentUser();
+$theme = $_COOKIE['theme'] ?? 'dark';
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="<?= htmlspecialchars($theme) ?>">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -73,6 +74,9 @@ if (!isset($user)) $user = getCurrentUser();
                 <div class="user-role"><?= htmlspecialchars($user['role'] ?? '') ?></div>
             </div>
         </div>
+        <button class="theme-toggle" id="themeToggle" title="Toggle theme">
+          <span class="theme-icon"><?= $theme === 'dark' ? '🌙' : '☀️' ?></span>
+        </button>
         <a href="/logout.php" class="nav-item nav-logout">
             <span class="nav-icon">🚪</span><span class="nav-label">Logout</span>
         </a>
