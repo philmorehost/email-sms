@@ -354,7 +354,7 @@ require_once __DIR__ . '/../includes/layout_header.php';
 <!-- ═══════════════════════════════════════════════════════════════════════
      TAB: Campaigns
      ═══════════════════════════════════════════════════════════════════════ -->
-<div class="tab-content" id="tab-campaigns">
+<div class="tab-content active" id="tab-campaigns">
     <div class="card">
         <div class="card-header">
             <h3>All Campaigns</h3>
@@ -429,7 +429,7 @@ require_once __DIR__ . '/../includes/layout_header.php';
 <!-- ═══════════════════════════════════════════════════════════════════════
      TAB: New Campaign
      ═══════════════════════════════════════════════════════════════════════ -->
-<div class="tab-content" id="tab-new-campaign" style="display:none;">
+<div class="tab-content" id="tab-new-campaign">
     <div class="card">
         <div class="card-header">
             <h3>Create New Campaign</h3>
@@ -550,7 +550,7 @@ require_once __DIR__ . '/../includes/layout_header.php';
 <!-- ═══════════════════════════════════════════════════════════════════════
      TAB: Templates
      ═══════════════════════════════════════════════════════════════════════ -->
-<div class="tab-content" id="tab-templates" style="display:none;">
+<div class="tab-content" id="tab-templates">
     <div class="card">
         <div class="card-header">
             <h3>Email Templates</h3>

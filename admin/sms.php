@@ -487,7 +487,7 @@ require_once __DIR__ . '/../includes/layout_header.php';
 <!-- ═══════════════════════════════════════════════════════════════════════
      TAB: Campaigns
      ═══════════════════════════════════════════════════════════════════════ -->
-<div class="tab-content" id="tab-campaigns">
+<div class="tab-content active" id="tab-campaigns">
     <div class="card">
         <div class="card-header">
             <h3>All Campaigns</h3>
@@ -563,7 +563,7 @@ require_once __DIR__ . '/../includes/layout_header.php';
 <!-- ═══════════════════════════════════════════════════════════════════════
      TAB: New Campaign
      ═══════════════════════════════════════════════════════════════════════ -->
-<div class="tab-content" id="tab-new-campaign" style="display:none;">
+<div class="tab-content" id="tab-new-campaign">
     <div class="card">
         <div class="card-header">
             <h3>Create New SMS Campaign</h3>
@@ -715,7 +715,7 @@ require_once __DIR__ . '/../includes/layout_header.php';
 <!-- ═══════════════════════════════════════════════════════════════════════
      TAB: Sender IDs
      ═══════════════════════════════════════════════════════════════════════ -->
-<div class="tab-content" id="tab-sender-ids" style="display:none;">
+<div class="tab-content" id="tab-sender-ids">
     <div class="card">
         <div class="card-header">
             <h3>Sender IDs</h3>
@@ -766,7 +766,7 @@ require_once __DIR__ . '/../includes/layout_header.php';
 <!-- ═══════════════════════════════════════════════════════════════════════
      TAB: Caller IDs
      ═══════════════════════════════════════════════════════════════════════ -->
-<div class="tab-content" id="tab-caller-ids" style="display:none;">
+<div class="tab-content" id="tab-caller-ids">
     <div class="card">
         <div class="card-header">
             <h3>Caller IDs</h3>
