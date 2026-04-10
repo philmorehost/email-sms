@@ -11,6 +11,12 @@ setSecurityHeaders();
 requireAuth();
 
 $user = getCurrentUser();
+
+// Redirect regular users to their own dashboard
+if (!in_array($user['role'] ?? '', ['superadmin', 'admin'], true)) {
+    redirect('/user/dashboard.php');
+}
+
 $db   = getDB();
 
 // Stats

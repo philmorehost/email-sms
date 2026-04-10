@@ -229,3 +229,154 @@ function isLoggedIn(): bool {
     startSecureSession();
     return !empty($_SESSION['user_id']);
 }
+
+// ── Registration helpers ──────────────────────────────────────────────────────
+
+/**
+ * Initiate registration: validate uniqueness, store pending OTP.
+ * Returns ['success'=>bool, 'message'=>string]
+ */
+function registerUser(string $username, string $email, string $password, string $fullName = ''): array {
+    try {
+        $db = getDB();
+
+        // Ensure email_verification_otps table exists
+        $db->exec("CREATE TABLE IF NOT EXISTS email_verification_otps (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            email VARCHAR(100) NOT NULL,
+            otp_code VARCHAR(10) NOT NULL,
+            username VARCHAR(50) NOT NULL,
+            password_hash VARCHAR(255) NOT NULL,
+            full_name VARCHAR(100) DEFAULT '',
+            expires_at TIMESTAMP NOT NULL,
+            used BOOLEAN DEFAULT FALSE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_email_otp (email, otp_code)
+        )");
+
+        // Check username uniqueness
+        $stmt = $db->prepare("SELECT id FROM users WHERE username = ?");
+        $stmt->execute([$username]);
+        if ($stmt->fetch()) {
+            return ['success' => false, 'message' => 'Username is already taken. Please choose another.'];
+        }
+
+        // Check email uniqueness
+        $stmt = $db->prepare("SELECT id FROM users WHERE email = ?");
+        $stmt->execute([$email]);
+        if ($stmt->fetch()) {
+            return ['success' => false, 'message' => 'An account with this email already exists. Please login.'];
+        }
+
+        $otp  = str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+        $hash = password_hash($password, PASSWORD_DEFAULT);
+        $exp  = date('Y-m-d H:i:s', time() + 900); // 15 min
+
+        // Invalidate existing pending OTPs for this email
+        $db->prepare("UPDATE email_verification_otps SET used = TRUE WHERE email = ? AND used = FALSE")->execute([$email]);
+
+        $db->prepare("INSERT INTO email_verification_otps (email, otp_code, username, password_hash, full_name, expires_at) VALUES (?,?,?,?,?,?)")
+           ->execute([$email, $otp, $username, $hash, $fullName, $exp]);
+
+        $mailer  = new Mailer();
+        $subject = 'Verify your email — ' . (defined('APP_NAME') ? APP_NAME : 'Marketing Suite');
+        $html = '
+<div style="font-family:system-ui,sans-serif;max-width:480px;margin:auto;background:#0f0f18;color:#e0e0e0;border-radius:16px;padding:2.5rem;border:1px solid rgba(255,255,255,0.1)">
+  <h2 style="margin:0 0 1rem;background:linear-gradient(135deg,#6c63ff,#00d4ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">Welcome to ' . htmlspecialchars(defined('APP_NAME') ? APP_NAME : 'Marketing Suite') . '!</h2>
+  <p style="color:#a0a0b0;margin-bottom:1.5rem">Thanks for signing up, <strong style="color:#e0e0e0">' . htmlspecialchars($username) . '</strong>. Use the code below to verify your email address.</p>
+  <div style="background:rgba(108,99,255,0.15);border:1px solid rgba(108,99,255,0.4);border-radius:12px;padding:1.5rem;text-align:center;margin-bottom:1.5rem">
+    <div style="font-size:2.5rem;font-weight:800;letter-spacing:.3em;color:#6c63ff">' . $otp . '</div>
+    <p style="color:#a0a0b0;margin:.5rem 0 0;font-size:.85rem">Expires in 15 minutes</p>
+  </div>
+  <p style="color:#606070;font-size:.8rem">If you did not create an account, you can safely ignore this email.</p>
+</div>';
+        $text = "Your verification code is: {$otp}\nExpires in 15 minutes.";
+        $mailer->send([['email' => $email, 'name' => $username]], $subject, $html, $text);
+
+        return ['success' => true, 'message' => 'Verification code sent to your email.'];
+    } catch (\Exception $e) {
+        error_log('registerUser error: ' . $e->getMessage());
+        return ['success' => false, 'message' => 'An error occurred. Please try again.'];
+    }
+}
+
+/**
+ * Verify registration OTP and create the user account.
+ * Returns ['success'=>bool, 'message'=>string]
+ */
+function verifyRegistrationOTP(string $email, string $otp): array {
+    try {
+        $db = getDB();
+        $stmt = $db->prepare(
+            "SELECT * FROM email_verification_otps WHERE email = ? AND otp_code = ? AND used = FALSE AND expires_at > NOW() LIMIT 1"
+        );
+        $stmt->execute([$email, $otp]);
+        $row = $stmt->fetch();
+
+        if (!$row) {
+            return ['success' => false, 'message' => 'Invalid or expired code. Please try again.'];
+        }
+
+        // Mark used
+        $db->prepare("UPDATE email_verification_otps SET used = TRUE WHERE id = ?")->execute([$row['id']]);
+
+        // Check uniqueness again (race condition)
+        $chk = $db->prepare("SELECT id FROM users WHERE username = ? OR email = ?");
+        $chk->execute([$row['username'], $email]);
+        if ($chk->fetch()) {
+            return ['success' => false, 'message' => 'Username or email already registered. Please login.'];
+        }
+
+        // Create user
+        $ins = $db->prepare(
+            "INSERT INTO users (username, email, password, role, is_suspended, mfa_enabled, notify_on_login, created_at)
+             VALUES (?, ?, ?, 'user', FALSE, TRUE, TRUE, NOW())"
+        );
+        $ins->execute([$row['username'], $email, $row['password_hash']]);
+        $userId = (int)$db->lastInsertId();
+
+        // Auto-login
+        startSecureSession();
+        session_regenerate_id(true);
+        $_SESSION['user_id']      = $userId;
+        $_SESSION['username']     = $row['username'];
+        $_SESSION['role']         = 'user';
+        $_SESSION['user_agent']   = $_SERVER['HTTP_USER_AGENT'] ?? '';
+        $_SESSION['logged_in_at'] = time();
+
+        return ['success' => true, 'message' => 'Account created successfully! Welcome aboard.', 'user_id' => $userId];
+    } catch (\Exception $e) {
+        error_log('verifyRegistrationOTP error: ' . $e->getMessage());
+        return ['success' => false, 'message' => 'An error occurred. Please try again.'];
+    }
+}
+
+/**
+ * Resend registration OTP.
+ */
+function resendRegistrationOTP(string $email): bool {
+    try {
+        $db   = getDB();
+        $stmt = $db->prepare("SELECT * FROM email_verification_otps WHERE email = ? AND used = FALSE ORDER BY created_at DESC LIMIT 1");
+        $stmt->execute([$email]);
+        $row = $stmt->fetch();
+        if (!$row) return false;
+
+        $otp = str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+        $exp = date('Y-m-d H:i:s', time() + 900);
+
+        $db->prepare("UPDATE email_verification_otps SET used = TRUE WHERE email = ? AND used = FALSE")->execute([$email]);
+        $db->prepare("INSERT INTO email_verification_otps (email, otp_code, username, password_hash, full_name, expires_at) VALUES (?,?,?,?,?,?)")
+           ->execute([$email, $otp, $row['username'], $row['password_hash'], $row['full_name'], $exp]);
+
+        $mailer  = new Mailer();
+        $subject = 'New Verification Code — ' . (defined('APP_NAME') ? APP_NAME : 'Marketing Suite');
+        $html = '<p>Your new verification code is: <strong style="font-size:1.4em;letter-spacing:.2em">' . $otp . '</strong></p><p>Expires in 15 minutes.</p>';
+        $text = "Your new verification code: {$otp}\nExpires in 15 minutes.";
+        $mailer->send([['email' => $email, 'name' => $row['username']]], $subject, $html, $text);
+        return true;
+    } catch (\Exception $e) {
+        error_log('resendRegistrationOTP error: ' . $e->getMessage());
+        return false;
+    }
+}

@@ -3,7 +3,9 @@
 if (!isset($pageTitle)) $pageTitle = 'Dashboard';
 if (!isset($activePage)) $activePage = '';
 if (!isset($user)) $user = getCurrentUser();
-$theme = $_COOKIE['theme'] ?? 'dark';
+$theme      = $_COOKIE['theme'] ?? 'dark';
+$isAdmin    = in_array($user['role'] ?? '', ['superadmin', 'admin'], true);
+$isSuperAdmin = ($user['role'] ?? '') === 'superadmin';
 ?>
 <!DOCTYPE html>
 <html lang="en" data-theme="<?= htmlspecialchars($theme) ?>">
@@ -36,29 +38,49 @@ $theme = $_COOKIE['theme'] ?? 'dark';
         </div>
 
         <div class="nav-section">
-            <span class="nav-section-title">Marketing</span>
+            <span class="nav-section-title">SMS</span>
+            <a href="/user/sms.php" class="nav-item <?= $activePage === 'sms' ? 'active' : '' ?>">
+                <span class="nav-icon">💬</span><span class="nav-label">Send SMS</span>
+            </a>
+        </div>
+
+        <?php if ($isAdmin): ?>
+        <div class="nav-section">
+            <span class="nav-section-title">Admin — Marketing</span>
             <a href="/admin/email.php" class="nav-item <?= $activePage === 'email' ? 'active' : '' ?>">
                 <span class="nav-icon">📧</span><span class="nav-label">Email Marketing</span>
             </a>
-            <a href="/admin/sms.php" class="nav-item <?= $activePage === 'sms' ? 'active' : '' ?>">
-                <span class="nav-icon">💬</span><span class="nav-label">SMS Marketing</span>
+            <a href="/admin/sms.php" class="nav-item <?= $activePage === 'admin_sms' ? 'active' : '' ?>">
+                <span class="nav-icon">📤</span><span class="nav-label">SMS Campaigns</span>
             </a>
         </div>
 
         <div class="nav-section">
-            <span class="nav-section-title">Settings</span>
-            <a href="/admin/smtp.php" class="nav-item <?= $activePage === 'smtp' ? 'active' : '' ?>">
-                <span class="nav-icon">⚙️</span><span class="nav-label">SMTP & APIs</span>
+            <span class="nav-section-title">Admin — Management</span>
+            <a href="/admin/plans.php" class="nav-item <?= $activePage === 'plans' ? 'active' : '' ?>">
+                <span class="nav-icon">📦</span><span class="nav-label">Plans &amp; Packages</span>
+            </a>
+            <a href="/admin/billing.php" class="nav-item <?= $activePage === 'billing_admin' ? 'active' : '' ?>">
+                <span class="nav-icon">💰</span><span class="nav-label">Billing &amp; Credits</span>
             </a>
             <a href="/admin/users.php" class="nav-item <?= $activePage === 'users' ? 'active' : '' ?>">
                 <span class="nav-icon">👥</span><span class="nav-label">Users</span>
             </a>
+            <a href="/admin/contacts.php" class="nav-item <?= $activePage === 'contacts' ? 'active' : '' ?>">
+                <span class="nav-icon">📒</span><span class="nav-label">Contacts</span>
+            </a>
+            <a href="/admin/analytics.php" class="nav-item <?= $activePage === 'analytics' ? 'active' : '' ?>">
+                <span class="nav-icon">📊</span><span class="nav-label">Analytics</span>
+            </a>
         </div>
 
         <div class="nav-section">
-            <span class="nav-section-title">Security</span>
+            <span class="nav-section-title">Admin — Settings</span>
+            <a href="/admin/smtp.php" class="nav-item <?= $activePage === 'smtp' ? 'active' : '' ?>">
+                <span class="nav-icon">⚙️</span><span class="nav-label">SMTP &amp; APIs</span>
+            </a>
             <a href="/admin/security.php" class="nav-item <?= $activePage === 'security' ? 'active' : '' ?>">
-                <span class="nav-icon">🛡️</span><span class="nav-label">Security Settings</span>
+                <span class="nav-icon">🛡️</span><span class="nav-label">Security</span>
             </a>
             <a href="/admin/countries.php" class="nav-item <?= $activePage === 'countries' ? 'active' : '' ?>">
                 <span class="nav-icon">🌍</span><span class="nav-label">Country Firewall</span>
@@ -67,6 +89,7 @@ $theme = $_COOKIE['theme'] ?? 'dark';
                 <span class="nav-icon">🔐</span><span class="nav-label">IP Management</span>
             </a>
         </div>
+        <?php endif; ?>
     </nav>
 
     <div class="sidebar-footer">

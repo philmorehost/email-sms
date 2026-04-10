@@ -386,3 +386,17 @@ CREATE TABLE IF NOT EXISTS sms_purchase_requests (
 INSERT INTO app_settings (setting_key, setting_value) VALUES
     ('sms_price_per_unit', '6.50')
 ON DUPLICATE KEY UPDATE setting_key = setting_key;
+
+-- Email Verification OTPs (for public registration)
+CREATE TABLE IF NOT EXISTS email_verification_otps (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    email VARCHAR(100) NOT NULL,
+    otp_code VARCHAR(10) NOT NULL,
+    username VARCHAR(50) NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    full_name VARCHAR(100) DEFAULT '',
+    expires_at TIMESTAMP NOT NULL,
+    used BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_email_otp (email, otp_code)
+);
