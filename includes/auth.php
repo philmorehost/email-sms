@@ -104,7 +104,7 @@ function isDeviceTrusted(int $userId): bool {
     }
     try {
         $db   = getDB();
-        $stmt = $db->prepare("SELECT id FROM trusted_devices WHERE user_id = ? AND token = ? AND expires_at > NOW()");
+        $stmt = $db->prepare("SELECT id FROM trusted_devices WHERE user_id = ? AND device_token = ? AND expires_at > NOW()");
         $stmt->execute([$userId, $token]);
         return (bool)$stmt->fetch();
     } catch (\Exception $e) {
@@ -122,7 +122,7 @@ function sendLoginOTP(int $userId, string $email): bool {
         // Invalidate any previous unused OTPs for this user
         $db->prepare("UPDATE login_otps SET used = TRUE WHERE user_id = ? AND used = FALSE")->execute([$userId]);
 
-        $stmt = $db->prepare("INSERT INTO login_otps (user_id, otp, expires_at, used) VALUES (?, ?, ?, FALSE)");
+        $stmt = $db->prepare("INSERT INTO login_otps (user_id, otp_code, expires_at, used) VALUES (?, ?, ?, FALSE)");
         $stmt->execute([$userId, $otp, $expires]);
 
         $mailer  = new Mailer();
@@ -142,7 +142,7 @@ function verifyLoginOTP(int $userId, string $otp, bool $rememberDevice, string $
     try {
         $db   = getDB();
         $stmt = $db->prepare(
-            "SELECT id FROM login_otps WHERE user_id = ? AND otp = ? AND used = FALSE AND expires_at > NOW() LIMIT 1"
+            "SELECT id FROM login_otps WHERE user_id = ? AND otp_code = ? AND used = FALSE AND expires_at > NOW() LIMIT 1"
         );
         $stmt->execute([$userId, $otp]);
         $row = $stmt->fetch();
@@ -158,8 +158,8 @@ function verifyLoginOTP(int $userId, string $otp, bool $rememberDevice, string $
             $token   = bin2hex(random_bytes(32)); // 64-char hex
             $expires = date('Y-m-d H:i:s', time() + 30 * 86400);
             $db->prepare(
-                "INSERT INTO trusted_devices (user_id, token, expires_at) VALUES (?, ?, ?)"
-            )->execute([$userId, $token, $expires]);
+                "INSERT INTO trusted_devices (user_id, device_token, ip_address, user_agent, expires_at) VALUES (?, ?, ?, ?, ?)"
+            )->execute([$userId, $token, $ip, $userAgent, $expires]);
 
             $secure = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on';
             setcookie('trusted_device_token', $token, [
