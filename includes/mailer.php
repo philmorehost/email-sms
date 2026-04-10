@@ -325,8 +325,12 @@ class Mailer {
             $toEmails[] = is_array($recipient) ? $recipient['email'] : $recipient;
         }
 
+        $fromName  = $this->settings['from_name'] ?? '';
+        $fromEmail = $this->settings['from_email'] ?? '';
+        $fromAddr  = $fromName !== '' ? "{$fromName} <{$fromEmail}>" : $fromEmail;
+
         $payload = [
-            'from'    => ($this->settings['from_name'] ?? '') . ' <' . ($this->settings['from_email'] ?? '') . '>',
+            'from'    => $fromAddr,
             'to'      => $toEmails,
             'subject' => $subject,
             'html'    => $htmlBody,
@@ -362,8 +366,12 @@ class Mailer {
             $toList[] = is_array($recipient) ? $recipient['email'] : $recipient;
         }
 
+        $fromName  = $this->settings['from_name'] ?? '';
+        $fromEmail = $this->settings['from_email'] ?? '';
+        $fromAddr  = $fromName !== '' ? "{$fromName} <{$fromEmail}>" : $fromEmail;
+
         $payload = [
-            'From'          => ($this->settings['from_name'] ?? '') . ' <' . ($this->settings['from_email'] ?? '') . '>',
+            'From'          => $fromAddr,
             'To'            => implode(',', $toList),
             'Subject'       => $subject,
             'HtmlBody'      => $htmlBody,
