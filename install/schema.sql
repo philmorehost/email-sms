@@ -397,14 +397,37 @@ INSERT INTO app_settings (setting_key, setting_value) VALUES
     ('bank_account_number', ''),
     ('bank_name', ''),
     ('bank_transfer_charges', '0'),
-    ('bank_transfer_note', '')
+    ('bank_transfer_note', ''),
+    -- Flutterwave
+    ('flutterwave_public_key', ''),
+    ('flutterwave_secret_key', ''),
+    ('flutterwave_enabled', '0'),
+    ('flutterwave_fee_percent', '1.4'),
+    -- PayPal
+    ('paypal_client_id', ''),
+    ('paypal_client_secret', ''),
+    ('paypal_mode', 'sandbox'),
+    ('paypal_enabled', '0'),
+    ('paypal_fee_percent', '3.49'),
+    -- Stripe
+    ('stripe_publishable_key', ''),
+    ('stripe_secret_key', ''),
+    ('stripe_enabled', '0'),
+    ('stripe_fee_percent', '2.9'),
+    -- Plisio
+    ('plisio_api_key', ''),
+    ('plisio_currency', 'BTC'),
+    ('plisio_enabled', '0'),
+    ('plisio_fee_percent', '0.5'),
+    -- Hidden FX markup for USD gateways (admin only, N0-N100)
+    ('fx_markup_ngn', '0')
 ON DUPLICATE KEY UPDATE setting_key = setting_key;
 
 -- Wallet Deposits (all deposit methods)
 CREATE TABLE IF NOT EXISTS wallet_deposits (
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL,
-    method ENUM('payhub_card','virtual_bank','manual_transfer') NOT NULL,
+    method VARCHAR(30) NOT NULL DEFAULT '',
     amount DECIMAL(12,2) NOT NULL,
     fee DECIMAL(12,2) DEFAULT 0.00,
     net_amount DECIMAL(12,2) NOT NULL,
@@ -414,6 +437,8 @@ CREATE TABLE IF NOT EXISTS wallet_deposits (
     bank_transfer_proof TEXT,
     admin_note VARCHAR(255),
     processed_by INT NULL,
+    usd_amount DECIMAL(12,4) NULL DEFAULT NULL,
+    exchange_rate DECIMAL(12,4) NULL DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     processed_at TIMESTAMP NULL,
     INDEX idx_user_deposit (user_id),

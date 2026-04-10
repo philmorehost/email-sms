@@ -14,19 +14,44 @@ $user = getCurrentUser();
 
 // ── Ensure all required settings keys exist ────────────────────────────────
 $defaults = [
-    'currency_symbol'         => '₦',
-    'currency_name'           => 'Naira',
-    'deposit_fee_percent'     => '0',
-    'payhub_api_key'          => '',
-    'payhub_secret_key'       => '',
-    'payhub_enabled'          => '0',
-    'virtual_bank_enabled'    => '0',
-    'manual_transfer_enabled' => '0',
-    'bank_account_name'       => '',
-    'bank_account_number'     => '',
-    'bank_name'               => '',
-    'bank_transfer_charges'   => '0',
-    'bank_transfer_note'      => '',
+    'currency_symbol'           => '₦',
+    'currency_name'             => 'Naira',
+    'deposit_fee_percent'       => '0',
+    // Payhub
+    'payhub_api_key'            => '',
+    'payhub_secret_key'         => '',
+    'payhub_enabled'            => '0',
+    'virtual_bank_enabled'      => '0',
+    // Flutterwave
+    'flutterwave_public_key'    => '',
+    'flutterwave_secret_key'    => '',
+    'flutterwave_enabled'       => '0',
+    'flutterwave_fee_percent'   => '1.4',
+    // PayPal
+    'paypal_client_id'          => '',
+    'paypal_client_secret'      => '',
+    'paypal_mode'               => 'sandbox',
+    'paypal_enabled'            => '0',
+    'paypal_fee_percent'        => '3.49',
+    // Stripe
+    'stripe_publishable_key'    => '',
+    'stripe_secret_key'         => '',
+    'stripe_enabled'            => '0',
+    'stripe_fee_percent'        => '2.9',
+    // Plisio
+    'plisio_api_key'            => '',
+    'plisio_currency'           => 'BTC',
+    'plisio_enabled'            => '0',
+    'plisio_fee_percent'        => '0.5',
+    // FX markup (hidden from users; applies to USD gateways)
+    'fx_markup_ngn'             => '0',
+    // Manual transfer
+    'manual_transfer_enabled'   => '0',
+    'bank_account_name'         => '',
+    'bank_account_number'       => '',
+    'bank_name'                 => '',
+    'bank_transfer_charges'     => '0',
+    'bank_transfer_note'        => '',
 ];
 foreach ($defaults as $k => $v) {
     try {
@@ -66,6 +91,11 @@ try {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )");
 } catch (\Exception $e) {}
+
+// Migrate wallet_deposits: extend method column to VARCHAR, add FX columns
+try { $db->exec("ALTER TABLE wallet_deposits MODIFY COLUMN method VARCHAR(30) NOT NULL DEFAULT ''"); } catch (\Exception $e) {}
+try { $db->exec("ALTER TABLE wallet_deposits ADD COLUMN usd_amount DECIMAL(12,4) NULL DEFAULT NULL"); } catch (\Exception $e) {}
+try { $db->exec("ALTER TABLE wallet_deposits ADD COLUMN exchange_rate DECIMAL(12,4) NULL DEFAULT NULL"); } catch (\Exception $e) {}
 
 // ── Flash helpers ──────────────────────────────────────────────────────────
 function setFlash(string $msg, string $type = 'success'): void {
@@ -144,6 +174,83 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         setFlash('Bank transfer settings saved.');
         redirect('/admin/payment-settings.php#bank');
+    }
+
+    // Save Flutterwave settings
+    if ($action === 'save_flutterwave') {
+        $feeStr = number_format(max(0, min(100, (float)($_POST['flutterwave_fee_percent'] ?? 1.4))), 2, '.', '');
+        foreach ([
+            ['flutterwave_public_key',  sanitize($_POST['flutterwave_public_key']  ?? '')],
+            ['flutterwave_secret_key',  sanitize($_POST['flutterwave_secret_key']  ?? '')],
+            ['flutterwave_enabled',     isset($_POST['flutterwave_enabled'])   ? '1' : '0'],
+            ['flutterwave_fee_percent', $feeStr],
+        ] as [$k, $v]) {
+            $db->prepare("INSERT INTO app_settings (setting_key,setting_value) VALUES (?,?) ON DUPLICATE KEY UPDATE setting_value=?")
+               ->execute([$k, $v, $v]);
+        }
+        setFlash('Flutterwave settings saved.');
+        redirect('/admin/payment-settings.php#flutterwave');
+    }
+
+    // Save PayPal settings
+    if ($action === 'save_paypal') {
+        $feeStr = number_format(max(0, min(100, (float)($_POST['paypal_fee_percent'] ?? 3.49))), 2, '.', '');
+        $mode   = ($_POST['paypal_mode'] ?? 'sandbox') === 'live' ? 'live' : 'sandbox';
+        foreach ([
+            ['paypal_client_id',     sanitize($_POST['paypal_client_id']     ?? '')],
+            ['paypal_client_secret', sanitize($_POST['paypal_client_secret'] ?? '')],
+            ['paypal_mode',          $mode],
+            ['paypal_enabled',       isset($_POST['paypal_enabled'])  ? '1' : '0'],
+            ['paypal_fee_percent',   $feeStr],
+        ] as [$k, $v]) {
+            $db->prepare("INSERT INTO app_settings (setting_key,setting_value) VALUES (?,?) ON DUPLICATE KEY UPDATE setting_value=?")
+               ->execute([$k, $v, $v]);
+        }
+        setFlash('PayPal settings saved.');
+        redirect('/admin/payment-settings.php#paypal');
+    }
+
+    // Save Stripe settings
+    if ($action === 'save_stripe') {
+        $feeStr = number_format(max(0, min(100, (float)($_POST['stripe_fee_percent'] ?? 2.9))), 2, '.', '');
+        foreach ([
+            ['stripe_publishable_key', sanitize($_POST['stripe_publishable_key'] ?? '')],
+            ['stripe_secret_key',      sanitize($_POST['stripe_secret_key']      ?? '')],
+            ['stripe_enabled',         isset($_POST['stripe_enabled'])   ? '1' : '0'],
+            ['stripe_fee_percent',     $feeStr],
+        ] as [$k, $v]) {
+            $db->prepare("INSERT INTO app_settings (setting_key,setting_value) VALUES (?,?) ON DUPLICATE KEY UPDATE setting_value=?")
+               ->execute([$k, $v, $v]);
+        }
+        setFlash('Stripe settings saved.');
+        redirect('/admin/payment-settings.php#stripe');
+    }
+
+    // Save Plisio settings
+    if ($action === 'save_plisio') {
+        $feeStr    = number_format(max(0, min(100, (float)($_POST['plisio_fee_percent'] ?? 0.5))), 2, '.', '');
+        $currency  = preg_replace('/[^A-Za-z]/', '', $_POST['plisio_currency'] ?? 'BTC');
+        if (!$currency) $currency = 'BTC';
+        foreach ([
+            ['plisio_api_key',      sanitize($_POST['plisio_api_key'] ?? '')],
+            ['plisio_currency',     strtoupper($currency)],
+            ['plisio_enabled',      isset($_POST['plisio_enabled'])  ? '1' : '0'],
+            ['plisio_fee_percent',  $feeStr],
+        ] as [$k, $v]) {
+            $db->prepare("INSERT INTO app_settings (setting_key,setting_value) VALUES (?,?) ON DUPLICATE KEY UPDATE setting_value=?")
+               ->execute([$k, $v, $v]);
+        }
+        setFlash('Plisio settings saved.');
+        redirect('/admin/payment-settings.php#plisio');
+    }
+
+    // Save FX markup (hidden admin-only setting for USD gateways)
+    if ($action === 'save_fx_markup') {
+        $markup = number_format(max(0, min(100, (float)($_POST['fx_markup_ngn'] ?? 0))), 2, '.', '');
+        $db->prepare("INSERT INTO app_settings (setting_key,setting_value) VALUES ('fx_markup_ngn',?) ON DUPLICATE KEY UPDATE setting_value=?")
+           ->execute([$markup, $markup]);
+        setFlash('FX markup saved.');
+        redirect('/admin/payment-settings.php#fx');
     }
 
     setFlash('Unknown action.', 'error');
@@ -284,6 +391,206 @@ require_once __DIR__ . '/../includes/layout_header.php';
             </label>
             <br>
             <button type="submit" class="btn btn-primary">Save Bank Transfer Settings</button>
+        </form>
+    </div>
+</div>
+
+<!-- ── FX Markup (admin-only hidden charge for USD gateways) ──────────── -->
+<div class="card" id="fx" style="margin-top:1.5rem">
+    <div class="card-header">
+        <h3>💱 Foreign Exchange Markup <span style="font-size:.75rem;font-weight:400;color:var(--warning);margin-left:.5rem">🔒 Admin Only</span></h3>
+    </div>
+    <div class="card-body">
+        <p style="color:var(--text-muted);font-size:.9rem;margin-bottom:1.25rem">
+            Add a fixed amount (in <?= htmlspecialchars($s('currency_name','Naira')) ?>) per $1 USD on top of the live market exchange rate.
+            This covers the difference between the market rate and what you actually buy USD for.
+            <strong>Users will see the combined rate but not this markup separately.</strong>
+        </p>
+        <form method="POST" action="/admin/payment-settings.php">
+            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken()) ?>">
+            <input type="hidden" name="action" value="save_fx_markup">
+            <div class="form-group" style="max-width:320px">
+                <label>Markup per $1 USD (<?= htmlspecialchars($s('currency_symbol','₦')) ?>)
+                    <span style="font-size:.78rem;color:var(--text-muted)">0 – 100</span>
+                </label>
+                <input type="number" name="fx_markup_ngn" value="<?= htmlspecialchars($s('fx_markup_ngn', '0')) ?>" min="0" max="100" step="0.01" placeholder="0.00">
+                <p class="form-hint">
+                    e.g. If market rate is <?= htmlspecialchars($s('currency_symbol','₦')) ?>1,500/USD and you set <?= htmlspecialchars($s('currency_symbol','₦')) ?>50,
+                    users pay at <?= htmlspecialchars($s('currency_symbol','₦')) ?>1,550/USD.
+                    Applies to PayPal, Stripe, and Plisio (USD-denominated gateways).
+                </p>
+            </div>
+            <button type="submit" class="btn btn-primary">Save FX Markup</button>
+        </form>
+    </div>
+</div>
+
+<!-- ── Flutterwave ────────────────────────────────────────────────────── -->
+<div class="card" id="flutterwave" style="margin-top:1.5rem">
+    <div class="card-header">
+        <h3>🦋 Flutterwave</h3>
+        <a href="https://developer.flutterwave.com" target="_blank" rel="noopener" class="btn btn-sm btn-secondary">📖 Docs</a>
+    </div>
+    <div class="card-body">
+        <p style="color:var(--text-muted);font-size:.9rem;margin-bottom:1.25rem">
+            Accept cards and bank transfers in NGN via Flutterwave Rave inline checkout.
+        </p>
+        <form method="POST" action="/admin/payment-settings.php">
+            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken()) ?>">
+            <input type="hidden" name="action" value="save_flutterwave">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Public Key</label>
+                    <input type="text" name="flutterwave_public_key" value="<?= htmlspecialchars($s('flutterwave_public_key')) ?>" placeholder="FLWPUBK_TEST-...">
+                </div>
+                <div class="form-group">
+                    <label>Secret Key</label>
+                    <input type="password" name="flutterwave_secret_key" value="<?= htmlspecialchars($s('flutterwave_secret_key')) ?>" placeholder="FLWSECK_TEST-...">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Fee (%)</label>
+                    <input type="number" name="flutterwave_fee_percent" value="<?= htmlspecialchars($s('flutterwave_fee_percent', '1.4')) ?>" min="0" max="100" step="0.01" placeholder="1.40">
+                    <p class="form-hint">Charged to the user on top of their deposit amount.</p>
+                </div>
+            </div>
+            <label class="checkbox-group" style="margin-bottom:1.25rem">
+                <input type="checkbox" name="flutterwave_enabled" value="1" <?= $s('flutterwave_enabled') === '1' ? 'checked' : '' ?>>
+                <span>Enable Flutterwave</span>
+            </label><br>
+            <button type="submit" class="btn btn-primary">Save Flutterwave Settings</button>
+        </form>
+    </div>
+</div>
+
+<!-- ── PayPal ─────────────────────────────────────────────────────────── -->
+<div class="card" id="paypal" style="margin-top:1.5rem">
+    <div class="card-header">
+        <h3>🅿️ PayPal</h3>
+        <a href="https://developer.paypal.com" target="_blank" rel="noopener" class="btn btn-sm btn-secondary">📖 Docs</a>
+    </div>
+    <div class="card-body">
+        <p style="color:var(--text-muted);font-size:.9rem;margin-bottom:1.25rem">
+            Users pay in <strong>USD</strong>. Amounts are auto-converted from/to NGN at the live rate (+FX markup).
+        </p>
+        <form method="POST" action="/admin/payment-settings.php">
+            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken()) ?>">
+            <input type="hidden" name="action" value="save_paypal">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Client ID</label>
+                    <input type="text" name="paypal_client_id" value="<?= htmlspecialchars($s('paypal_client_id')) ?>" placeholder="AQ...">
+                </div>
+                <div class="form-group">
+                    <label>Client Secret</label>
+                    <input type="password" name="paypal_client_secret" value="<?= htmlspecialchars($s('paypal_client_secret')) ?>" placeholder="EJ...">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Mode</label>
+                    <select name="paypal_mode">
+                        <option value="sandbox" <?= $s('paypal_mode','sandbox') === 'sandbox' ? 'selected' : '' ?>>Sandbox (testing)</option>
+                        <option value="live"    <?= $s('paypal_mode') === 'live'    ? 'selected' : '' ?>>Live (production)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Fee (%)</label>
+                    <input type="number" name="paypal_fee_percent" value="<?= htmlspecialchars($s('paypal_fee_percent', '3.49')) ?>" min="0" max="100" step="0.01" placeholder="3.49">
+                    <p class="form-hint">Displayed to users as a USD fee on checkout.</p>
+                </div>
+            </div>
+            <label class="checkbox-group" style="margin-bottom:1.25rem">
+                <input type="checkbox" name="paypal_enabled" value="1" <?= $s('paypal_enabled') === '1' ? 'checked' : '' ?>>
+                <span>Enable PayPal</span>
+            </label><br>
+            <button type="submit" class="btn btn-primary">Save PayPal Settings</button>
+        </form>
+    </div>
+</div>
+
+<!-- ── Stripe ─────────────────────────────────────────────────────────── -->
+<div class="card" id="stripe" style="margin-top:1.5rem">
+    <div class="card-header">
+        <h3>⚡ Stripe</h3>
+        <a href="https://stripe.com/docs" target="_blank" rel="noopener" class="btn btn-sm btn-secondary">📖 Docs</a>
+    </div>
+    <div class="card-body">
+        <p style="color:var(--text-muted);font-size:.9rem;margin-bottom:1.25rem">
+            Accept card payments globally in <strong>USD</strong> via Stripe Elements. Auto-converts to NGN on success.
+        </p>
+        <form method="POST" action="/admin/payment-settings.php">
+            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken()) ?>">
+            <input type="hidden" name="action" value="save_stripe">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Publishable Key</label>
+                    <input type="text" name="stripe_publishable_key" value="<?= htmlspecialchars($s('stripe_publishable_key')) ?>" placeholder="pk_test_...">
+                </div>
+                <div class="form-group">
+                    <label>Secret Key</label>
+                    <input type="password" name="stripe_secret_key" value="<?= htmlspecialchars($s('stripe_secret_key')) ?>" placeholder="sk_test_...">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Fee (%)</label>
+                    <input type="number" name="stripe_fee_percent" value="<?= htmlspecialchars($s('stripe_fee_percent', '2.9')) ?>" min="0" max="100" step="0.01" placeholder="2.9">
+                </div>
+            </div>
+            <label class="checkbox-group" style="margin-bottom:1.25rem">
+                <input type="checkbox" name="stripe_enabled" value="1" <?= $s('stripe_enabled') === '1' ? 'checked' : '' ?>>
+                <span>Enable Stripe</span>
+            </label><br>
+            <button type="submit" class="btn btn-primary">Save Stripe Settings</button>
+        </form>
+    </div>
+</div>
+
+<!-- ── Plisio (Crypto) ────────────────────────────────────────────────── -->
+<div class="card" id="plisio" style="margin-top:1.5rem">
+    <div class="card-header">
+        <h3>₿ Plisio – Cryptocurrency</h3>
+        <a href="https://plisio.net/api" target="_blank" rel="noopener" class="btn btn-sm btn-secondary">📖 Docs</a>
+    </div>
+    <div class="card-body">
+        <p style="color:var(--text-muted);font-size:.9rem;margin-bottom:1.25rem">
+            Accept BTC, ETH, LTC and other cryptocurrencies via Plisio. Charged in <strong>USD</strong>, auto-converted to NGN.
+        </p>
+        <form method="POST" action="/admin/payment-settings.php">
+            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken()) ?>">
+            <input type="hidden" name="action" value="save_plisio">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Plisio API Key</label>
+                    <input type="password" name="plisio_api_key" value="<?= htmlspecialchars($s('plisio_api_key')) ?>" placeholder="...">
+                </div>
+                <div class="form-group">
+                    <label>Default Cryptocurrency</label>
+                    <select name="plisio_currency">
+                        <?php
+                        $cryptos = ['BTC'=>'Bitcoin (BTC)','ETH'=>'Ethereum (ETH)','LTC'=>'Litecoin (LTC)','USDT'=>'Tether (USDT)','BNB'=>'BNB','XMR'=>'Monero (XMR)','DOGE'=>'Dogecoin (DOGE)'];
+                        $cur = strtoupper($s('plisio_currency','BTC'));
+                        foreach ($cryptos as $code => $label):
+                        ?>
+                        <option value="<?= $code ?>" <?= $cur === $code ? 'selected' : '' ?>><?= $label ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <p class="form-hint">Users are redirected to Plisio's hosted page where they pay in this crypto.</p>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Fee (%)</label>
+                    <input type="number" name="plisio_fee_percent" value="<?= htmlspecialchars($s('plisio_fee_percent', '0.5')) ?>" min="0" max="100" step="0.01" placeholder="0.5">
+                </div>
+            </div>
+            <label class="checkbox-group" style="margin-bottom:1.25rem">
+                <input type="checkbox" name="plisio_enabled" value="1" <?= $s('plisio_enabled') === '1' ? 'checked' : '' ?>>
+                <span>Enable Plisio Crypto Payments</span>
+            </label><br>
+            <button type="submit" class="btn btn-primary">Save Plisio Settings</button>
         </form>
     </div>
 </div>
