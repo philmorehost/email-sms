@@ -154,6 +154,7 @@ try {
          LEFT JOIN user_sms_wallet w ON w.user_id = u.id
          LEFT JOIN user_subscriptions us ON us.user_id = u.id
          LEFT JOIN email_plans ep ON ep.id = us.plan_id
+         WHERE u.role NOT IN ('admin', 'superadmin')
          ORDER BY u.created_at DESC"
     )->fetchAll();
 } catch (\Exception $e) {
