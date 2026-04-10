@@ -151,6 +151,29 @@ function redirect(string $url): never {
     exit;
 }
 
+/**
+ * Return the currency symbol configured by admin (default: ₦).
+ */
+function currencySymbol(): string {
+    static $sym = null;
+    if ($sym !== null) return $sym;
+    try {
+        $db  = getDB();
+        $row = $db->query("SELECT setting_value FROM app_settings WHERE setting_key='currency_symbol'")->fetch();
+        $sym = ($row && $row['setting_value'] !== '') ? $row['setting_value'] : '₦';
+    } catch (\Exception $e) {
+        $sym = '₦';
+    }
+    return $sym;
+}
+
+/**
+ * Format a monetary amount with the configured currency symbol.
+ */
+function formatMoney(float $amount, int $decimals = 2): string {
+    return currencySymbol() . number_format($amount, $decimals);
+}
+
 function setSecurityHeaders(): void {
     header('X-Frame-Options: DENY');
     header('X-XSS-Protection: 1; mode=block');

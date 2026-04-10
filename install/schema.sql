@@ -384,8 +384,54 @@ CREATE TABLE IF NOT EXISTS sms_purchase_requests (
 
 -- Default SMS price per unit/page and other app settings defaults
 INSERT INTO app_settings (setting_key, setting_value) VALUES
-    ('sms_price_per_unit', '6.50')
+    ('sms_price_per_unit', '6.50'),
+    ('currency_symbol', '₦'),
+    ('currency_name', 'Naira'),
+    ('deposit_fee_percent', '0'),
+    ('payhub_api_key', ''),
+    ('payhub_secret_key', ''),
+    ('payhub_enabled', '0'),
+    ('virtual_bank_enabled', '0'),
+    ('manual_transfer_enabled', '0'),
+    ('bank_account_name', ''),
+    ('bank_account_number', ''),
+    ('bank_name', ''),
+    ('bank_transfer_charges', '0'),
+    ('bank_transfer_note', '')
 ON DUPLICATE KEY UPDATE setting_key = setting_key;
+
+-- Wallet Deposits (all deposit methods)
+CREATE TABLE IF NOT EXISTS wallet_deposits (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    method ENUM('payhub_card','virtual_bank','manual_transfer') NOT NULL,
+    amount DECIMAL(12,2) NOT NULL,
+    fee DECIMAL(12,2) DEFAULT 0.00,
+    net_amount DECIMAL(12,2) NOT NULL,
+    status ENUM('pending','completed','failed','rejected') DEFAULT 'pending',
+    reference VARCHAR(100),
+    payhub_txn_id VARCHAR(100),
+    bank_transfer_proof TEXT,
+    admin_note VARCHAR(255),
+    processed_by INT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    processed_at TIMESTAMP NULL,
+    INDEX idx_user_deposit (user_id),
+    INDEX idx_status_deposit (status)
+);
+
+-- Virtual Bank Accounts (Payhub generated)
+CREATE TABLE IF NOT EXISTS virtual_bank_accounts (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL UNIQUE,
+    account_name VARCHAR(150),
+    account_number VARCHAR(30),
+    bank_name VARCHAR(100),
+    customer_id VARCHAR(100),
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
 
 -- Email Verification OTPs (for public registration)
 CREATE TABLE IF NOT EXISTS email_verification_otps (

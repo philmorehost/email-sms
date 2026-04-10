@@ -122,12 +122,89 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect('/admin/billing.php?tab=subscriptions');
     }
 
+    // ── Approve manual bank transfer ──────────────────────────────────────
+    if ($action === 'approve_deposit') {
+        $depId  = (int)($_POST['deposit_id'] ?? 0);
+        $note   = sanitize($_POST['admin_note'] ?? 'Admin approved');
+        $adminId = (int)($user['id'] ?? 0);
+        if (!$depId) { setFlash('Invalid deposit.', 'error'); redirect('/admin/billing.php?tab=deposits'); }
+        try {
+            $db->beginTransaction();
+            $dep = $db->prepare("SELECT * FROM wallet_deposits WHERE id=? AND status='pending'")->execute([$depId]) ? null : null;
+            $stmt = $db->prepare("SELECT * FROM wallet_deposits WHERE id=? AND status='pending'");
+            $stmt->execute([$depId]);
+            $dep = $stmt->fetch();
+            if (!$dep) { $db->rollBack(); setFlash('Deposit not found or already processed.', 'error'); redirect('/admin/billing.php?tab=deposits'); }
+
+            $netAmount = (float)$dep['net_amount'];
+            $depUserId = (int)$dep['user_id'];
+            $ref       = $dep['reference'];
+
+            // Credit wallet
+            $db->prepare("INSERT INTO user_sms_wallet (user_id,credits) VALUES(?,?) ON DUPLICATE KEY UPDATE credits=credits+?, updated_at=NOW()")
+               ->execute([$depUserId, $netAmount, $netAmount]);
+            $db->prepare("INSERT INTO sms_credit_transactions (user_id,amount,type,description,reference) VALUES(?,?,'credit',?,?)")
+               ->execute([$depUserId, $netAmount, 'Manual transfer deposit approved by admin', $ref]);
+            // Mark as completed
+            $db->prepare("UPDATE wallet_deposits SET status='completed', admin_note=?, processed_by=?, processed_at=NOW() WHERE id=?")
+               ->execute([$note, $adminId, $depId]);
+            $db->commit();
+            setFlash("Deposit #{$depId} approved and wallet credited.");
+        } catch (\Exception $e) {
+            $db->rollBack();
+            setFlash('Error approving deposit.', 'error');
+        }
+        redirect('/admin/billing.php?tab=deposits');
+    }
+
+    // ── Reject manual bank transfer ───────────────────────────────────────
+    if ($action === 'reject_deposit') {
+        $depId   = (int)($_POST['deposit_id'] ?? 0);
+        $note    = sanitize($_POST['admin_note'] ?? 'Admin rejected');
+        $adminId = (int)($user['id'] ?? 0);
+        if (!$depId) { setFlash('Invalid deposit.', 'error'); redirect('/admin/billing.php?tab=deposits'); }
+        try {
+            $db->prepare("UPDATE wallet_deposits SET status='rejected', admin_note=?, processed_by=?, processed_at=NOW() WHERE id=? AND status='pending'")
+               ->execute([$note, $adminId, $depId]);
+            setFlash("Deposit #{$depId} rejected and recorded as failed.");
+        } catch (\Exception $e) { setFlash('Error rejecting deposit.', 'error'); }
+        redirect('/admin/billing.php?tab=deposits');
+    }
+
     setFlash('Unknown action.', 'error');
     redirect('/admin/billing.php');
 }
 
 $flash     = popFlash();
 $activeTab = $_GET['tab'] ?? 'overview';
+
+// Ensure wallet_deposits table exists
+try {
+    $db->exec("CREATE TABLE IF NOT EXISTS wallet_deposits (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        method ENUM('payhub_card','virtual_bank','manual_transfer') NOT NULL,
+        amount DECIMAL(12,2) NOT NULL,
+        fee DECIMAL(12,2) DEFAULT 0.00,
+        net_amount DECIMAL(12,2) NOT NULL,
+        status ENUM('pending','completed','failed','rejected') DEFAULT 'pending',
+        reference VARCHAR(100),
+        payhub_txn_id VARCHAR(100),
+        bank_transfer_proof TEXT,
+        admin_note VARCHAR(255),
+        processed_by INT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        processed_at TIMESTAMP NULL,
+        INDEX idx_user_deposit (user_id),
+        INDEX idx_status_deposit (status)
+    )");
+} catch (\Exception $e) {}
+
+$currSym = '₦';
+try {
+    $csRow = $db->query("SELECT setting_value FROM app_settings WHERE setting_key='currency_symbol'")->fetchColumn();
+    if ($csRow) $currSym = $csRow;
+} catch (\Exception $e) {}
 
 // Overview stats
 $totalCreditsIssued   = 0;
@@ -182,6 +259,24 @@ if ($activeTab === 'subscriptions') {
     } catch (\Exception $e) {}
 }
 
+// Deposits tab
+$pendingDeposits    = [];
+$processedDeposits  = [];
+$pendingDepCount    = 0;
+if ($activeTab === 'deposits') {
+    try {
+        $stmt = $db->query("SELECT d.*, u.username FROM wallet_deposits d LEFT JOIN users u ON u.id=d.user_id WHERE d.status='pending' ORDER BY d.created_at ASC");
+        $pendingDeposits = $stmt->fetchAll();
+        $pendingDepCount = count($pendingDeposits);
+        $stmt2 = $db->query("SELECT d.*, u.username FROM wallet_deposits d LEFT JOIN users u ON u.id=d.user_id WHERE d.status != 'pending' ORDER BY d.processed_at DESC LIMIT 100");
+        $processedDeposits = $stmt2->fetchAll();
+    } catch (\Exception $e) {}
+} else {
+    try {
+        $pendingDepCount = (int)$db->query("SELECT COUNT(*) FROM wallet_deposits WHERE status='pending'")->fetchColumn();
+    } catch (\Exception $e) {}
+}
+
 $pageTitle  = 'Billing & Credits';
 $activePage = 'billing';
 require_once __DIR__ . '/../includes/layout_header.php';
@@ -211,6 +306,7 @@ require_once __DIR__ . '/../includes/layout_header.php';
     <a href="/admin/billing.php?tab=overview"       class="tab-btn <?= $activeTab === 'overview'       ? 'active' : '' ?>">Overview</a>
     <a href="/admin/billing.php?tab=transactions"   class="tab-btn <?= $activeTab === 'transactions'   ? 'active' : '' ?>">Transactions</a>
     <a href="/admin/billing.php?tab=subscriptions"  class="tab-btn <?= $activeTab === 'subscriptions'  ? 'active' : '' ?>">Subscriptions</a>
+    <a href="/admin/billing.php?tab=deposits"       class="tab-btn <?= $activeTab === 'deposits'       ? 'active' : '' ?>">Deposits <?= $pendingDepCount > 0 ? '<span style="background:var(--danger);color:#fff;border-radius:50%;padding:.1rem .4rem;font-size:.7rem;margin-left:.25rem">'.$pendingDepCount.'</span>' : '' ?></a>
     <a href="/admin/plans.php?tab=purchase_requests" class="tab-btn">Purchase Requests</a>
 </div>
 
@@ -242,7 +338,7 @@ require_once __DIR__ . '/../includes/layout_header.php';
                         <select name="package_id" class="form-control" id="packageSelect" onchange="toggleCustomAmount(this.value)">
                             <option value="0">Custom Amount</option>
                             <?php foreach ($activePackages as $pkg): ?>
-                            <option value="<?= (int)$pkg['id'] ?>"><?= htmlspecialchars($pkg['name']) ?> — <?= number_format((int)$pkg['credits']) ?> credits (₦<?= number_format((float)$pkg['price'],2) ?>)</option>
+                            <option value="<?= (int)$pkg['id'] ?>"><?= htmlspecialchars($pkg['name']) ?> — <?= number_format((int)$pkg['credits']) ?> credits (<?= htmlspecialchars($currSym) ?><?= number_format((float)$pkg['price'],2) ?>)</option>
                             <?php endforeach; ?>
                         </select>
                     </div>
@@ -406,6 +502,85 @@ require_once __DIR__ . '/../includes/layout_header.php';
         </tbody>
     </table>
     </div>
+</div>
+
+<!-- DEPOSITS TAB -->
+<div class="tab-pane <?= $activeTab === 'deposits' ? 'active' : '' ?>">
+    <?php if (!empty($pendingDeposits)): ?>
+    <div class="card" style="margin-bottom:1.5rem;border-color:rgba(255,165,2,.3)">
+        <div class="card-header" style="background:rgba(255,165,2,.06)">
+            <h3>⏳ Pending Manual Transfers (<?= count($pendingDeposits) ?>)</h3>
+        </div>
+        <div class="table-wrap">
+        <table class="table">
+            <thead><tr><th>ID</th><th>User</th><th>Method</th><th>Amount</th><th>Fee</th><th>Net (to credit)</th><th>Proof</th><th>Date</th><th>Actions</th></tr></thead>
+            <tbody>
+            <?php foreach ($pendingDeposits as $dep):
+                $methodLabel = ['payhub_card'=>'💳 Card','virtual_bank'=>'🏦 Virtual Bank','manual_transfer'=>'📤 Manual Transfer'][$dep['method']] ?? $dep['method'];
+            ?>
+            <tr>
+                <td>#<?= (int)$dep['id'] ?></td>
+                <td><?= htmlspecialchars($dep['username'] ?? '') ?></td>
+                <td><?= $methodLabel ?></td>
+                <td><?= htmlspecialchars($currSym) ?><?= number_format((float)$dep['amount'], 2) ?></td>
+                <td><?= htmlspecialchars($currSym) ?><?= number_format((float)$dep['fee'], 2) ?></td>
+                <td style="font-weight:700;color:var(--success)"><?= htmlspecialchars($currSym) ?><?= number_format((float)$dep['net_amount'], 2) ?></td>
+                <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.8rem" title="<?= htmlspecialchars($dep['bank_transfer_proof'] ?? '') ?>"><?= htmlspecialchars(substr($dep['bank_transfer_proof'] ?? '—', 0, 80)) ?></td>
+                <td><?= htmlspecialchars(date('M j, Y H:i', strtotime($dep['created_at']))) ?></td>
+                <td>
+                    <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+                    <form method="POST" action="/admin/billing.php" style="display:inline" onsubmit="return confirm('Approve deposit and credit wallet?')">
+                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken()) ?>">
+                        <input type="hidden" name="action" value="approve_deposit">
+                        <input type="hidden" name="deposit_id" value="<?= (int)$dep['id'] ?>">
+                        <input type="hidden" name="admin_note" value="Approved by admin">
+                        <button type="submit" class="btn btn-sm btn-success">✓ Approve</button>
+                    </form>
+                    <form method="POST" action="/admin/billing.php" style="display:inline" onsubmit="return confirm('Reject this deposit?')">
+                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken()) ?>">
+                        <input type="hidden" name="action" value="reject_deposit">
+                        <input type="hidden" name="deposit_id" value="<?= (int)$dep['id'] ?>">
+                        <input type="hidden" name="admin_note" value="Rejected by admin">
+                        <button type="submit" class="btn btn-sm btn-danger">✗ Reject</button>
+                    </form>
+                    </div>
+                </td>
+            </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        </div>
+    </div>
+    <?php else: ?>
+    <div class="alert alert-info" style="margin-bottom:1.5rem">✅ No pending deposits.</div>
+    <?php endif; ?>
+
+    <?php if (!empty($processedDeposits)): ?>
+    <div class="card">
+        <div class="card-header"><h3>📋 Processed Deposits</h3></div>
+        <div class="table-wrap">
+        <table class="table">
+            <thead><tr><th>ID</th><th>User</th><th>Method</th><th>Amount</th><th>Net</th><th>Status</th><th>Note</th><th>Processed</th></tr></thead>
+            <tbody>
+            <?php foreach ($processedDeposits as $dep):
+                $methodLabel = ['payhub_card'=>'💳 Card','virtual_bank'=>'🏦 Virtual Bank','manual_transfer'=>'📤 Manual Transfer'][$dep['method']] ?? $dep['method'];
+            ?>
+            <tr>
+                <td>#<?= (int)$dep['id'] ?></td>
+                <td><?= htmlspecialchars($dep['username'] ?? '') ?></td>
+                <td><?= $methodLabel ?></td>
+                <td><?= htmlspecialchars($currSym) ?><?= number_format((float)$dep['amount'], 2) ?></td>
+                <td><?= htmlspecialchars($currSym) ?><?= number_format((float)$dep['net_amount'], 2) ?></td>
+                <td><span class="badge badge-<?= htmlspecialchars($dep['status']) ?>"><?= ucfirst($dep['status']) ?></span></td>
+                <td style="font-size:.8rem"><?= htmlspecialchars($dep['admin_note'] ?? '—') ?></td>
+                <td><?= $dep['processed_at'] ? htmlspecialchars(date('M j, Y H:i', strtotime($dep['processed_at']))) : '—' ?></td>
+            </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        </div>
+    </div>
+    <?php endif; ?>
 </div>
 
 <script>

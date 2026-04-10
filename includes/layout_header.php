@@ -35,6 +35,9 @@ $isSuperAdmin = ($user['role'] ?? '') === 'superadmin';
             <a href="/billing.php" class="nav-item <?= $activePage === 'billing' ? 'active' : '' ?>">
                 <span class="nav-icon">💳</span><span class="nav-label">SMS Credits</span>
             </a>
+            <a href="/deposit.php" class="nav-item <?= $activePage === 'deposit' ? 'active' : '' ?>">
+                <span class="nav-icon">💰</span><span class="nav-label">Deposit Funds</span>
+            </a>
         </div>
 
         <div class="nav-section">
@@ -78,6 +81,9 @@ $isSuperAdmin = ($user['role'] ?? '') === 'superadmin';
             <span class="nav-section-title">Admin — Settings</span>
             <a href="/admin/smtp.php" class="nav-item <?= $activePage === 'smtp' ? 'active' : '' ?>">
                 <span class="nav-icon">⚙️</span><span class="nav-label">SMTP &amp; APIs</span>
+            </a>
+            <a href="/admin/payment-settings.php" class="nav-item <?= $activePage === 'payment_settings' ? 'active' : '' ?>">
+                <span class="nav-icon">💳</span><span class="nav-label">Payment Settings</span>
             </a>
             <a href="/admin/security.php" class="nav-item <?= $activePage === 'security' ? 'active' : '' ?>">
                 <span class="nav-icon">🛡️</span><span class="nav-label">Security</span>

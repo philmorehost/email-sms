@@ -9,10 +9,12 @@ if (!file_exists($lockFile) || !file_exists($configFile)) {
     exit;
 }
 
-// Fetch public-facing data (SMS price, packages) — gracefully fallback if DB unavailable
+// Fetch public-facing data (SMS price, packages, email plans) — gracefully fallback if DB unavailable
 $smsUnitPrice = 6.50;
 $packages     = [];
+$emailPlans   = [];
 $appName      = 'PhilmoreHost';
+$currSym      = '₦';
 
 try {
     require_once __DIR__ . '/config/config.php';
@@ -21,7 +23,10 @@ try {
     $db = getDB();
     $row = $db->query("SELECT setting_value FROM app_settings WHERE setting_key = 'sms_price_per_unit'")->fetch();
     if ($row) $smsUnitPrice = (float)$row['setting_value'];
-    $packages = $db->query("SELECT * FROM sms_credit_packages WHERE is_active = 1 ORDER BY price ASC")->fetchAll();
+    $symRow = $db->query("SELECT setting_value FROM app_settings WHERE setting_key = 'currency_symbol'")->fetch();
+    if ($symRow && $symRow['setting_value'] !== '') $currSym = $symRow['setting_value'];
+    $packages   = $db->query("SELECT * FROM sms_credit_packages WHERE is_active = 1 ORDER BY price ASC")->fetchAll();
+    $emailPlans = $db->query("SELECT * FROM email_plans WHERE is_active = 1 ORDER BY price ASC")->fetchAll();
 } catch (\Exception $e) {}
 
 $theme = $_COOKIE['theme'] ?? 'dark';
@@ -248,7 +253,8 @@ body { display: block; }
     <div class="lp-nav-links">
         <a href="#features">Features</a>
         <a href="#how-it-works">How It Works</a>
-        <a href="#pricing">Pricing</a>
+        <a href="#sms-pricing">SMS Pricing</a>
+        <a href="#email-pricing">Email Plans</a>
         <a href="#contact">Contact</a>
     </div>
     <div class="lp-nav-actions">
@@ -271,7 +277,7 @@ body { display: block; }
             <a href="#pricing" class="btn-outline btn-lg">View Pricing</a>
         </div>
         <div class="hero-stats">
-            <div class="hero-stat"><strong>₦<?= number_format($smsUnitPrice, 2) ?></strong><span>Per SMS Page</span></div>
+            <div class="hero-stat"><strong><?= $currSym ?><?= number_format($smsUnitPrice, 2) ?></strong><span>Per SMS Page</span></div>
             <div class="hero-stat"><strong>99.9%</strong><span>Uptime SLA</span></div>
             <div class="hero-stat"><strong>5s</strong><span>Avg. Delivery</span></div>
             <div class="hero-stat"><strong>24/7</strong><span>Support</span></div>
@@ -291,7 +297,7 @@ body { display: block; }
             <div class="feature-card">
                 <div class="feature-icon">💬</div>
                 <h3>Bulk SMS Campaigns</h3>
-                <p>Reach customers via bulk, corporate, or global SMS routes. Per-page billing ensures you only pay for what you use — ₦<?= number_format($smsUnitPrice, 2) ?>/page.</p>
+                <p>Reach customers via bulk, corporate, or global SMS routes. Per-page billing ensures you only pay for what you use — <?= $currSym ?><?= number_format($smsUnitPrice, 2) ?>/page.</p>
             </div>
             <div class="feature-card">
                 <div class="feature-icon">📧</div>
@@ -379,40 +385,40 @@ body { display: block; }
         <div class="sms-calc-section">
             <div style="display:flex;align-items:center;justify-content:center;gap:.75rem;margin-bottom:.25rem">
                 <span style="font-size:1.5rem">💰</span>
-                <h3 style="margin:0;font-size:1.25rem">Current price: <span style="color:#6c63ff">₦<?= number_format($smsUnitPrice, 2) ?>/page</span></h3>
+                <h3 style="margin:0;font-size:1.25rem">Current price: <span style="color:#6c63ff"><?= $currSym ?><?= number_format($smsUnitPrice, 2) ?>/page</span></h3>
             </div>
             <p style="color:#a0a0b0;font-size:.88rem;margin-bottom:0">Per-recipient, per-page charge</p>
             <div class="calc-grid">
                 <div class="calc-item">
-                    <strong>₦<?= number_format($smsUnitPrice, 2) ?></strong>
+                    <strong><?= $currSym ?><?= number_format($smsUnitPrice, 2) ?></strong>
                     <small>1 page (≤160 chars)</small>
                 </div>
                 <div class="calc-item">
-                    <strong>₦<?= number_format($smsUnitPrice * 2, 2) ?></strong>
+                    <strong><?= $currSym ?><?= number_format($smsUnitPrice * 2, 2) ?></strong>
                     <small>2 pages (161–306 chars)</small>
                 </div>
                 <div class="calc-item">
-                    <strong>₦<?= number_format($smsUnitPrice * 3, 2) ?></strong>
+                    <strong><?= $currSym ?><?= number_format($smsUnitPrice * 3, 2) ?></strong>
                     <small>3 pages (307–459 chars)</small>
                 </div>
                 <div class="calc-item">
-                    <strong>₦<?= number_format($smsUnitPrice * 4, 2) ?></strong>
+                    <strong><?= $currSym ?><?= number_format($smsUnitPrice * 4, 2) ?></strong>
                     <small>4 pages (460–612 chars)</small>
                 </div>
             </div>
             <p style="color:#606070;font-size:.8rem;margin-top:1.25rem">
-                After 160 chars, each additional page = 153 characters. Pages × recipients × ₦<?= number_format($smsUnitPrice, 2) ?> = total debit.
+                After 160 chars, each additional page = 153 characters. Pages × recipients × <?= $currSym ?><?= number_format($smsUnitPrice, 2) ?> = total debit.
             </p>
         </div>
     </div>
 </section>
 
 <!-- ══ PRICING ═══════════════════════════════════════════════════════════════ -->
-<section class="lp-section" id="pricing">
+<section class="lp-section" id="sms-pricing">
     <div style="max-width:1200px;margin:0 auto">
         <div class="section-center">
-            <span class="section-label">Pricing</span>
-            <h2 class="section-title">Affordable Credit Packages</h2>
+            <span class="section-label">SMS Pricing</span>
+            <h2 class="section-title">Affordable SMS Credit Packages</h2>
             <p class="section-sub">Buy SMS units upfront and use them whenever you need. The more you buy, the better the value.</p>
         </div>
 
@@ -438,14 +444,14 @@ body { display: block; }
                 <div class="pricing-credits"><?= number_format((int)$pkg['credits']) ?></div>
                 <div class="pricing-credits-label">SMS Units / Credits</div>
                 <div class="pricing-price">
-                    ₦<?= number_format((float)$pkg['price'], 2) ?>
+                    <?= $currSym ?><?= number_format((float)$pkg['price'], 2) ?>
                     <?php if ($pkg['billing_period'] !== 'one_time'): ?>
                     <small>/<?= strtolower($bLabel) ?></small>
                     <?php endif; ?>
                 </div>
                 <ul class="pricing-features">
                     <li><span class="check">✓</span><?= number_format((int)$pkg['credits']) ?> SMS credits</li>
-                    <li><span class="check">✓</span>₦<?= number_format($smsUnitPrice, 2) ?>/page pricing</li>
+                    <li><span class="check">✓</span><?= $currSym ?><?= number_format($smsUnitPrice, 2) ?>/page pricing</li>
                     <li><span class="check">✓</span>Bulk, Corporate &amp; Global routes</li>
                     <li><span class="check">✓</span>Real-time delivery reports</li>
                     <?php if ($pkg['billing_period'] !== 'one_time'): ?>
@@ -458,6 +464,59 @@ body { display: block; }
                     Get Started
                 </a>
                 <p class="pricing-unit">≈ <?= number_format((int)$pkg['credits']) ?> individual SMS pages</p>
+            </div>
+        <?php endforeach; ?>
+        </div>
+        <?php endif; ?>
+    </div>
+</section>
+
+<!-- ══ EMAIL PLANS ════════════════════════════════════════════════════════════ -->
+<section class="lp-section lp-section-alt" id="email-pricing">
+    <div style="max-width:1200px;margin:0 auto">
+        <div class="section-center">
+            <span class="section-label">Email Plans</span>
+            <h2 class="section-title">Monthly Email Marketing Plans</h2>
+            <p class="section-sub">Choose a monthly email plan with a generous send limit. Scale up any time.</p>
+        </div>
+
+        <?php if (empty($emailPlans)): ?>
+        <div style="text-align:center;padding:3rem;color:#606070">
+            <p style="font-size:1.1rem">Contact us for custom email plan pricing.</p>
+            <a href="/register.php" class="btn btn-primary btn-lg" style="margin-top:1.5rem;display:inline-block">Get a Quote</a>
+        </div>
+        <?php else: ?>
+        <?php $epPopularIdx = count($emailPlans) > 1 ? (int)floor(count($emailPlans) / 2) : -1; ?>
+        <div class="pricing-grid">
+        <?php foreach ($emailPlans as $ei => $ep):
+            $isPopular   = ($ei === $epPopularIdx);
+            $featuresArr = json_decode($ep['features'] ?? '[]', true) ?: [];
+        ?>
+            <div class="pricing-card <?= $isPopular ? 'featured' : '' ?>">
+                <?php if ($isPopular): ?><div class="pricing-badge">⭐ Most Popular</div><?php endif; ?>
+                <div class="pricing-period" style="color:#10b981">Monthly Email Plan</div>
+                <div class="pricing-name"><?= htmlspecialchars($ep['name']) ?></div>
+                <div class="pricing-credits" style="color:#10b981"><?= number_format((int)$ep['monthly_email_limit']) ?></div>
+                <div class="pricing-credits-label">Emails / Month</div>
+                <div class="pricing-price">
+                    <?= $currSym ?><?= number_format((float)$ep['price'], 2) ?>
+                    <small>/month</small>
+                </div>
+                <?php if (!empty($ep['description'])): ?>
+                <p style="color:#a0a0b0;font-size:.85rem;margin-bottom:.75rem;line-height:1.5"><?= htmlspecialchars($ep['description']) ?></p>
+                <?php endif; ?>
+                <ul class="pricing-features">
+                    <li><span class="check" style="color:#10b981">✓</span><?= number_format((int)$ep['monthly_email_limit']) ?> emails/month</li>
+                    <li><span class="check" style="color:#10b981">✓</span>Template builder included</li>
+                    <li><span class="check" style="color:#10b981">✓</span>Real-time open/click tracking</li>
+                    <li><span class="check" style="color:#10b981">✓</span>Unsubscribe management</li>
+                    <?php foreach (array_slice($featuresArr, 0, 2) as $f): ?>
+                    <li><span class="check" style="color:#10b981">✓</span><?= htmlspecialchars($f) ?></li>
+                    <?php endforeach; ?>
+                </ul>
+                <a href="/register.php" class="btn <?= $isPopular ? 'btn-primary' : 'btn-outline' ?>" style="width:100%;text-align:center;display:block;border-radius:50px;padding:.75rem 1.5rem;<?= $isPopular ? '' : 'border-color:rgba(16,185,129,.5);color:#10b981' ?>">
+                    Subscribe Now
+                </a>
             </div>
         <?php endforeach; ?>
         </div>
@@ -521,7 +580,8 @@ body { display: block; }
             <h4>Platform</h4>
             <ul>
                 <li><a href="#features">Features</a></li>
-                <li><a href="#pricing">Pricing</a></li>
+                <li><a href="#sms-pricing">SMS Pricing</a></li>
+                <li><a href="#email-pricing">Email Plans</a></li>
                 <li><a href="#how-it-works">How It Works</a></li>
             </ul>
         </div>

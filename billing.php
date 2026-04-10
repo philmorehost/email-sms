@@ -103,6 +103,103 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect('/billing.php?tab=wallet');
     }
 
+    // ── Buy SMS credits directly from wallet balance ──────────────────────────
+    if ($action === 'buy_sms_with_wallet') {
+        $packageId = (int)($_POST['package_id'] ?? 0);
+        if ($packageId <= 0) {
+            setFlash('Please select a valid package.', 'error');
+            redirect('/billing.php?tab=wallet');
+        }
+        try {
+            $db->beginTransaction();
+            $pkgStmt = $db->prepare("SELECT * FROM sms_credit_packages WHERE id = ? AND is_active = 1");
+            $pkgStmt->execute([$packageId]);
+            $pkg = $pkgStmt->fetch();
+            if (!$pkg) { $db->rollBack(); setFlash('Package not found or inactive.', 'error'); redirect('/billing.php?tab=wallet'); }
+
+            // Check wallet balance
+            $wStmt = $db->prepare("SELECT credits FROM user_sms_wallet WHERE user_id=? FOR UPDATE");
+            $wStmt->execute([$userId]);
+            $currentBalance = (float)($wStmt->fetchColumn() ?: 0.0);
+            $price          = (float)$pkg['price'];
+            $credits        = (float)$pkg['credits'];
+
+            if ($currentBalance < $price) {
+                $db->rollBack();
+                setFlash('Insufficient wallet balance. Please deposit funds first.', 'error');
+                redirect('/billing.php?tab=wallet');
+            }
+
+            $ref = 'WB-' . strtoupper(bin2hex(random_bytes(5)));
+            // Deduct price from wallet
+            $db->prepare("UPDATE user_sms_wallet SET credits=credits-?, updated_at=NOW() WHERE user_id=?")
+               ->execute([$price, $userId]);
+            $db->prepare("INSERT INTO sms_credit_transactions (user_id,amount,type,description,reference) VALUES(?,?,'debit',?,?)")
+               ->execute([$userId, $price, 'Purchase: ' . $pkg['name'], $ref]);
+            // Add SMS credits
+            $db->prepare("INSERT INTO user_sms_wallet (user_id,credits) VALUES(?,?) ON DUPLICATE KEY UPDATE credits=credits+?, updated_at=NOW()")
+               ->execute([$userId, $credits, $credits]);
+            $db->prepare("INSERT INTO sms_credit_transactions (user_id,amount,type,description,reference) VALUES(?,?,'credit',?,?)")
+               ->execute([$userId, $credits, 'SMS Credits: ' . $pkg['name'], $ref]);
+
+            $db->commit();
+            setFlash('Successfully purchased ' . number_format((int)$credits) . ' SMS credits for ' . currencySymbol() . number_format($price, 2) . '!');
+        } catch (\Exception $e) {
+            $db->rollBack();
+            error_log('buy_sms_with_wallet: ' . $e->getMessage());
+            setFlash('Error processing purchase. Please try again.', 'error');
+        }
+        redirect('/billing.php?tab=wallet');
+    }
+
+    // ── Subscribe to email plan with wallet balance ───────────────────────────
+    if ($action === 'subscribe_plan_wallet') {
+        $planId = (int)($_POST['plan_id'] ?? 0);
+        if ($planId <= 0) { setFlash('Please select a valid plan.', 'error'); redirect('/billing.php?tab=email_plans'); }
+        try {
+            $db->beginTransaction();
+            $pStmt = $db->prepare("SELECT * FROM email_plans WHERE id = ? AND is_active = 1");
+            $pStmt->execute([$planId]);
+            $plan = $pStmt->fetch();
+            if (!$plan) { $db->rollBack(); setFlash('Plan not found or inactive.', 'error'); redirect('/billing.php?tab=email_plans'); }
+
+            $wStmt = $db->prepare("SELECT credits FROM user_sms_wallet WHERE user_id=? FOR UPDATE");
+            $wStmt->execute([$userId]);
+            $currentBalance = (float)($wStmt->fetchColumn() ?: 0.0);
+            $price          = (float)$plan['price'];
+
+            if ($currentBalance < $price) {
+                $db->rollBack();
+                setFlash('Insufficient wallet balance. Please deposit funds first.', 'error');
+                redirect('/billing.php?tab=email_plans');
+            }
+
+            $ref     = 'EP-' . strtoupper(bin2hex(random_bytes(5)));
+            $expires = date('Y-m-d H:i:s', strtotime('+30 days'));
+
+            // Deduct from wallet
+            $db->prepare("UPDATE user_sms_wallet SET credits=credits-?, updated_at=NOW() WHERE user_id=?")
+               ->execute([$price, $userId]);
+            $db->prepare("INSERT INTO sms_credit_transactions (user_id,amount,type,description,reference) VALUES(?,?,'debit',?,?)")
+               ->execute([$userId, $price, 'Email Plan: ' . $plan['name'], $ref]);
+
+            // Subscribe
+            $db->prepare(
+                "INSERT INTO user_subscriptions (user_id,plan_id,status,emails_used,started_at,expires_at)
+                 VALUES (?,?,'active',0,NOW(),?)
+                 ON DUPLICATE KEY UPDATE plan_id=?,status='active',emails_used=0,started_at=NOW(),expires_at=?"
+            )->execute([$userId, $planId, $expires, $planId, $expires]);
+
+            $db->commit();
+            setFlash('Subscribed to "' . $plan['name'] . '"! ' . number_format((int)$plan['monthly_email_limit']) . ' emails/month for 30 days.');
+        } catch (\Exception $e) {
+            $db->rollBack();
+            error_log('subscribe_plan_wallet: ' . $e->getMessage());
+            setFlash('Error processing subscription. Please try again.', 'error');
+        }
+        redirect('/billing.php?tab=email_plans');
+    }
+
     // ── Subscribe to email plan ───────────────────────────────────────────────
     if ($action === 'subscribe_plan') {
         $planId = (int)($_POST['plan_id'] ?? 0);
@@ -159,9 +256,12 @@ try {
 
 // ── SMS price per unit ─────────────────────────────────────────────────────────
 $smsUnitPrice = 6.50;
+$currSym      = '₦';
 try {
     $pRow = $db->query("SELECT setting_value FROM app_settings WHERE setting_key = 'sms_price_per_unit'")->fetch();
     if ($pRow) $smsUnitPrice = (float)$pRow['setting_value'];
+    $csRow = $db->query("SELECT setting_value FROM app_settings WHERE setting_key = 'currency_symbol'")->fetchColumn();
+    if ($csRow) $currSym = $csRow;
 } catch (\Exception $e) {}
 
 // ── SMS monthly usage (current calendar month) ────────────────────────────────
@@ -309,10 +409,10 @@ require_once __DIR__ . '/includes/layout_header.php';
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;margin-bottom:1.75rem">
     <div class="wallet-hero" style="text-align:left;padding:1.75rem 2rem">
         <div style="font-size:.8rem;opacity:.75;text-transform:uppercase;letter-spacing:.06em;margin-bottom:.25rem">📱 SMS Wallet Balance</div>
-        <div class="wallet-amount">₦<?= number_format($walletBalance, 2) ?></div>
+        <div class="wallet-amount"><?= htmlspecialchars($currSym) ?><?= number_format($walletBalance, 2) ?></div>
         <?php $smsPages = ($smsUnitPrice > 0) ? (int)floor($walletBalance / $smsUnitPrice) : 0; ?>
-        <div class="wallet-subtext">≈ <?= number_format($smsPages) ?> SMS pages &nbsp;·&nbsp; ₦<?= number_format($smsUnitPrice, 2) ?>/page</div>
-        <div class="wallet-subtext" style="margin-top:.4rem">Used this month: <?= number_format($smsPagesThisMonth) ?> pages (₦<?= number_format($smsMonthlyDebit, 2) ?>)</div>
+        <div class="wallet-subtext">≈ <?= number_format($smsPages) ?> SMS pages &nbsp;·&nbsp; <?= htmlspecialchars($currSym) ?><?= number_format($smsUnitPrice, 2) ?>/page</div>
+        <div class="wallet-subtext" style="margin-top:.4rem">Used this month: <?= number_format($smsPagesThisMonth) ?> pages (<?= htmlspecialchars($currSym) ?><?= number_format($smsMonthlyDebit, 2) ?>)</div>
     </div>
     <div class="wallet-hero" style="background:linear-gradient(135deg,#10b981,#06b6d4);text-align:left;padding:1.75rem 2rem">
         <div style="font-size:.8rem;opacity:.75;text-transform:uppercase;letter-spacing:.06em;margin-bottom:.25rem">📧 Email Plan</div>
@@ -361,20 +461,20 @@ require_once __DIR__ . '/includes/layout_header.php';
                 <small>307 – 459 chars</small>
             </div>
             <div class="sms-calc-item">
-                <strong>₦<?= number_format($smsUnitPrice, 2) ?>/page</strong>
+                <strong><?= htmlspecialchars($currSym) ?><?= number_format($smsUnitPrice, 2) ?>/page</strong>
                 <small>Current unit price</small>
             </div>
             <div class="sms-calc-item">
-                <strong>₦<?= number_format($smsUnitPrice * 2, 2) ?></strong>
+                <strong><?= htmlspecialchars($currSym) ?><?= number_format($smsUnitPrice * 2, 2) ?></strong>
                 <small>2-page SMS cost</small>
             </div>
             <div class="sms-calc-item">
-                <strong>₦<?= number_format($smsUnitPrice * 3, 2) ?></strong>
+                <strong><?= htmlspecialchars($currSym) ?><?= number_format($smsUnitPrice * 3, 2) ?></strong>
                 <small>3-page SMS cost</small>
             </div>
         </div>
         <p style="font-size:.82rem;color:var(--text-muted);margin:.75rem 0 0">
-            After 160 characters, each page = 153 characters. Debit = (number of pages) × (number of recipients) × (₦<?= number_format($smsUnitPrice, 2) ?>/page).
+            After 160 characters, each page = 153 characters. Debit = (number of pages) × (number of recipients) × (<?= htmlspecialchars($currSym) ?><?= number_format($smsUnitPrice, 2) ?>/page).
         </p>
     </div>
 
@@ -386,7 +486,8 @@ require_once __DIR__ . '/includes/layout_header.php';
     </div>
     <?php else: ?>
     <p style="color:var(--text-muted);margin-bottom:1.25rem">
-        Select a package below. Your request will be reviewed by an admin who will then credit your wallet.
+        Use your wallet balance to buy SMS credits instantly, or submit a purchase request for admin approval.
+        <a href="/deposit.php" class="btn btn-sm btn-secondary" style="margin-left:.5rem">💰 Deposit Funds</a>
     </p>
     <div class="packages-grid">
         <?php
@@ -395,6 +496,7 @@ require_once __DIR__ . '/includes/layout_header.php';
         foreach ($packages as $idx => $pkg):
             $isPopular = ($idx === $popularIndex);
             $bLabel    = $billingLabels[$pkg['billing_period'] ?? 'one_time'] ?? 'One-Time';
+            $canAfford = $walletBalance >= (float)$pkg['price'];
         ?>
         <div class="pkg-card <?= $isPopular ? 'popular' : '' ?>">
             <?php if ($isPopular): ?>
@@ -405,18 +507,32 @@ require_once __DIR__ . '/includes/layout_header.php';
             <div class="pkg-credits"><?= number_format((int)$pkg['credits']) ?></div>
             <div class="pkg-credits-label">SMS Units / Credits</div>
             <div class="pkg-price">
-                ₦<?= number_format((float)$pkg['price'], 2) ?>
+                <?= htmlspecialchars($currSym) ?><?= number_format((float)$pkg['price'], 2) ?>
                 <?php if ($pkg['billing_period'] !== 'one_time'): ?>
                 <small>/<?= strtolower(substr($bLabel, 0, 2)) ?></small>
                 <?php endif; ?>
             </div>
+            <?php if ($canAfford): ?>
+            <form method="POST" action="/billing.php" style="margin-bottom:.5rem">
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken()) ?>">
+                <input type="hidden" name="action" value="buy_sms_with_wallet">
+                <input type="hidden" name="package_id" value="<?= (int)$pkg['id'] ?>">
+                <button type="submit" class="btn btn-primary" style="width:100%"
+                        onclick="return confirm('Buy <?= (int)$pkg['credits'] ?> credits for <?= htmlspecialchars($currSym) ?><?= number_format((float)$pkg['price'], 2) ?> from wallet?')">
+                    💰 Buy with Wallet
+                </button>
+            </form>
+            <?php else: ?>
+            <a href="/deposit.php" class="btn btn-secondary" style="width:100%;text-align:center;display:block;margin-bottom:.5rem">
+                💳 Deposit to Buy
+            </a>
+            <?php endif; ?>
             <form method="POST" action="/billing.php">
                 <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken()) ?>">
                 <input type="hidden" name="action" value="request_purchase">
                 <input type="hidden" name="package_id" value="<?= (int)$pkg['id'] ?>">
-                <button type="submit" class="btn btn-primary" style="width:100%"
-                        onclick="return confirm('Request ' + <?= (int)$pkg['credits'] ?> + ' credits for ₦' + '<?= number_format((float)$pkg['price'], 2) ?>' + '?')">
-                    Request Purchase
+                <button type="submit" class="btn btn-secondary" style="width:100%;font-size:.8rem">
+                    📋 Request (Admin Approval)
                 </button>
             </form>
         </div>
@@ -514,7 +630,7 @@ require_once __DIR__ . '/includes/layout_header.php';
             <div class="pkg-credits"><?= number_format((int)$ep['monthly_email_limit']) ?></div>
             <div class="pkg-credits-label">Emails / Month</div>
             <div class="pkg-price">
-                $<?= number_format((float)$ep['price'], 2) ?>
+                <?= htmlspecialchars($currSym) ?><?= number_format((float)$ep['price'], 2) ?>
                 <small>/month</small>
             </div>
             <?php if (!empty($featuresArr)): ?>
@@ -524,14 +640,31 @@ require_once __DIR__ . '/includes/layout_header.php';
                 <?php endforeach; ?>
             </ul>
             <?php endif; ?>
-            <?php if (!$isCurrentPlan): ?>
+            <?php if (!$isCurrentPlan):
+                $canAffordPlan = $walletBalance >= (float)$ep['price'];
+            ?>
+            <?php if ($canAffordPlan): ?>
+            <form method="POST" action="/billing.php" style="margin-bottom:.5rem">
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken()) ?>">
+                <input type="hidden" name="action" value="subscribe_plan_wallet">
+                <input type="hidden" name="plan_id" value="<?= (int)$ep['id'] ?>">
+                <button type="submit" class="btn btn-primary" style="width:100%"
+                        onclick="return confirm('Subscribe to <?= htmlspecialchars(addslashes($ep['name'])) ?> for <?= htmlspecialchars($currSym) ?><?= number_format((float)$ep['price'], 2) ?> from wallet?')">
+                    💰 <?= $mySubscription ? 'Switch (Wallet)' : 'Subscribe with Wallet' ?>
+                </button>
+            </form>
+            <?php else: ?>
+            <a href="/deposit.php" class="btn btn-secondary" style="width:100%;text-align:center;display:block;margin-bottom:.5rem">
+                💳 Deposit to Subscribe
+            </a>
+            <?php endif; ?>
             <form method="POST" action="/billing.php">
                 <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken()) ?>">
                 <input type="hidden" name="action" value="subscribe_plan">
                 <input type="hidden" name="plan_id" value="<?= (int)$ep['id'] ?>">
-                <button type="submit" class="btn btn-primary" style="width:100%"
-                        onclick="return confirm('Subscribe to <?= htmlspecialchars(addslashes($ep['name'])) ?>?')">
-                    <?= $mySubscription ? 'Switch to This Plan' : 'Subscribe' ?>
+                <button type="submit" class="btn btn-secondary" style="width:100%;font-size:.8rem"
+                        onclick="return confirm('Subscribe to <?= htmlspecialchars(addslashes($ep['name'])) ?> (admin approval required)?')">
+                    📋 Request (Admin)
                 </button>
             </form>
             <?php else: ?>
@@ -563,7 +696,7 @@ require_once __DIR__ . '/includes/layout_header.php';
         <tr>
             <td><?= htmlspecialchars($req['package_name'] ?? '—') ?></td>
             <td><?= number_format((int)$req['credits']) ?></td>
-            <td>₦<?= number_format((float)$req['price'], 2) ?></td>
+            <td><?= htmlspecialchars($currSym) ?><?= number_format((float)$req['price'], 2) ?></td>
             <td><?= htmlspecialchars($billingLabels[$req['billing_period'] ?? 'one_time'] ?? 'One-Time') ?></td>
             <td>
                 <?php if ($req['status'] === 'pending'): ?>
@@ -611,7 +744,7 @@ require_once __DIR__ . '/includes/layout_header.php';
                 <?php endif; ?>
             </td>
             <td style="color:<?= $tx['type'] === 'credit' ? 'var(--success)' : 'var(--danger)' ?>;font-weight:600">
-                <?= $tx['type'] === 'credit' ? '+' : '−' ?>₦<?= number_format((float)$tx['amount'], 2) ?>
+                <?= $tx['type'] === 'credit' ? '+' : '−' ?><?= htmlspecialchars($currSym) ?><?= number_format((float)$tx['amount'], 2) ?>
             </td>
             <td><?= htmlspecialchars($tx['description'] ?? '') ?></td>
             <td><code style="font-size:.8rem"><?= htmlspecialchars($tx['reference'] ?? '') ?></code></td>
