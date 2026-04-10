@@ -75,6 +75,17 @@ try {
     if (empty($cols)) {
         $db->exec("ALTER TABLE sms_credit_packages ADD COLUMN billing_period ENUM('one_time','monthly','quarterly','yearly') NOT NULL DEFAULT 'one_time' AFTER price");
     }
+    // Add emails_per_hour column to email_plans if missing
+    $cols3 = $db->query("SHOW COLUMNS FROM email_plans LIKE 'emails_per_hour'")->fetchAll();
+    if (empty($cols3)) {
+        $db->exec("ALTER TABLE email_plans ADD COLUMN emails_per_hour INT NOT NULL DEFAULT 0 AFTER monthly_email_limit");
+    }
+    // Add is_special and allowed_providers columns to email_plans if missing
+    $cols4 = $db->query("SHOW COLUMNS FROM email_plans LIKE 'is_special'")->fetchAll();
+    if (empty($cols4)) {
+        $db->exec("ALTER TABLE email_plans ADD COLUMN is_special BOOLEAN NOT NULL DEFAULT FALSE AFTER emails_per_hour");
+        $db->exec("ALTER TABLE email_plans ADD COLUMN allowed_providers JSON NULL AFTER is_special");
+    }
     // Ensure sms_price_per_unit app setting exists
     $db->exec("INSERT IGNORE INTO app_settings (setting_key, setting_value) VALUES ('sms_price_per_unit', '6.50')");
 } catch (\Exception $e) { error_log('plans.php migration: ' . $e->getMessage()); }
@@ -100,37 +111,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
 
     if ($action === 'add_plan') {
-        $name        = sanitize($_POST['name'] ?? '');
-        $description = sanitize($_POST['description'] ?? '');
-        $price       = (float)($_POST['price'] ?? 0);
-        $limit       = (int)($_POST['monthly_email_limit'] ?? 1000);
-        $is_active   = isset($_POST['is_active']) ? 1 : 0;
-        $featuresRaw = $_POST['features'] ?? '';
-        $featuresArr = array_values(array_filter(array_map('trim', explode("\n", $featuresRaw))));
-        $features    = json_encode($featuresArr);
+        $name            = sanitize($_POST['name'] ?? '');
+        $description     = sanitize($_POST['description'] ?? '');
+        $price           = (float)($_POST['price'] ?? 0);
+        $limit           = (int)($_POST['monthly_email_limit'] ?? 1000);
+        $emails_per_hour = max(0, (int)($_POST['emails_per_hour'] ?? 0));
+        $is_special      = isset($_POST['is_special']) ? 1 : 0;
+        $is_active       = isset($_POST['is_active']) ? 1 : 0;
+        $featuresRaw     = $_POST['features'] ?? '';
+        $featuresArr     = array_values(array_filter(array_map('trim', explode("\n", $featuresRaw))));
+        $features        = json_encode($featuresArr);
+        $providersRaw    = $_POST['allowed_providers'] ?? '';
+        $providersArr    = array_values(array_filter(array_map('trim', explode(',', $providersRaw))));
+        $allowedProviders= $is_special ? json_encode($providersArr) : null;
         if ($name === '') { setFlash('Plan name is required.', 'error'); redirect('/admin/plans.php?tab=email_plans'); }
         try {
-            $stmt = $db->prepare('INSERT INTO email_plans (name,description,price,monthly_email_limit,features,is_active) VALUES (?,?,?,?,?,?)');
-            $stmt->execute([$name, $description, $price, $limit, $features, $is_active]);
+            $stmt = $db->prepare('INSERT INTO email_plans (name,description,price,monthly_email_limit,emails_per_hour,is_special,allowed_providers,features,is_active) VALUES (?,?,?,?,?,?,?,?,?)');
+            $stmt->execute([$name, $description, $price, $limit, $emails_per_hour, $is_special, $allowedProviders, $features, $is_active]);
             setFlash('Plan added.');
         } catch (\Exception $e) { setFlash('Error adding plan.', 'error'); }
         redirect('/admin/plans.php?tab=email_plans');
     }
 
     if ($action === 'edit_plan') {
-        $id          = (int)($_POST['plan_id'] ?? 0);
-        $name        = sanitize($_POST['name'] ?? '');
-        $description = sanitize($_POST['description'] ?? '');
-        $price       = (float)($_POST['price'] ?? 0);
-        $limit       = (int)($_POST['monthly_email_limit'] ?? 1000);
-        $is_active   = isset($_POST['is_active']) ? 1 : 0;
-        $featuresRaw = $_POST['features'] ?? '';
-        $featuresArr = array_values(array_filter(array_map('trim', explode("\n", $featuresRaw))));
-        $features    = json_encode($featuresArr);
+        $id              = (int)($_POST['plan_id'] ?? 0);
+        $name            = sanitize($_POST['name'] ?? '');
+        $description     = sanitize($_POST['description'] ?? '');
+        $price           = (float)($_POST['price'] ?? 0);
+        $limit           = (int)($_POST['monthly_email_limit'] ?? 1000);
+        $emails_per_hour = max(0, (int)($_POST['emails_per_hour'] ?? 0));
+        $is_special      = isset($_POST['is_special']) ? 1 : 0;
+        $is_active       = isset($_POST['is_active']) ? 1 : 0;
+        $featuresRaw     = $_POST['features'] ?? '';
+        $featuresArr     = array_values(array_filter(array_map('trim', explode("\n", $featuresRaw))));
+        $features        = json_encode($featuresArr);
+        $providersRaw    = $_POST['allowed_providers'] ?? '';
+        $providersArr    = array_values(array_filter(array_map('trim', explode(',', $providersRaw))));
+        $allowedProviders= $is_special ? json_encode($providersArr) : null;
         if (!$id || $name === '') { setFlash('Invalid data.', 'error'); redirect('/admin/plans.php?tab=email_plans'); }
         try {
-            $stmt = $db->prepare('UPDATE email_plans SET name=?,description=?,price=?,monthly_email_limit=?,features=?,is_active=? WHERE id=?');
-            $stmt->execute([$name, $description, $price, $limit, $features, $is_active, $id]);
+            $stmt = $db->prepare('UPDATE email_plans SET name=?,description=?,price=?,monthly_email_limit=?,emails_per_hour=?,is_special=?,allowed_providers=?,features=?,is_active=? WHERE id=?');
+            $stmt->execute([$name, $description, $price, $limit, $emails_per_hour, $is_special, $allowedProviders, $features, $is_active, $id]);
             setFlash('Plan updated.');
         } catch (\Exception $e) { setFlash('Error updating plan.', 'error'); }
         redirect('/admin/plans.php?tab=email_plans');
@@ -311,16 +332,7 @@ require_once __DIR__ . '/../includes/layout_header.php';
 
 <div class="tabs">
     <a href="/admin/plans.php?tab=email_plans"       class="tab-btn <?= $activeTab === 'email_plans'       ? 'active' : '' ?>">Email Plans</a>
-    <a href="/admin/plans.php?tab=sms_packages"      class="tab-btn <?= $activeTab === 'sms_packages'      ? 'active' : '' ?>">SMS Packages</a>
     <a href="/admin/plans.php?tab=sms_settings"      class="tab-btn <?= $activeTab === 'sms_settings'      ? 'active' : '' ?>">SMS Settings</a>
-    <a href="/admin/plans.php?tab=purchase_requests" class="tab-btn <?= $activeTab === 'purchase_requests' ? 'active' : '' ?>">
-        Purchase Requests
-        <?php
-            $pendingCount = count(array_filter($purchaseRequests, fn($r) => $r['status'] === 'pending'));
-            if ($pendingCount > 0): ?>
-            <span style="background:#ff4757;color:#fff;border-radius:50%;padding:0 5px;font-size:.75rem;margin-left:4px"><?= $pendingCount ?></span>
-        <?php endif; ?>
-    </a>
 </div>
 
 <!-- EMAIL PLANS TAB -->
@@ -344,10 +356,22 @@ require_once __DIR__ . '/../includes/layout_header.php';
                         <label>Monthly Email Limit</label>
                         <input type="number" name="monthly_email_limit" class="form-control" min="0" value="1000">
                     </div>
+                    <div class="form-group">
+                        <label>Emails Per Hour <small style="color:var(--text-muted)">(0 = unlimited)</small></label>
+                        <input type="number" name="emails_per_hour" class="form-control" min="0" value="0" placeholder="0 = no hourly limit">
+                    </div>
                     <div class="form-group" style="display:flex;align-items:center;gap:.5rem;padding-top:1.5rem">
                         <input type="checkbox" name="is_active" id="add_plan_active" value="1" checked>
                         <label for="add_plan_active" style="margin:0">Active</label>
                     </div>
+                    <div class="form-group" style="display:flex;align-items:center;gap:.5rem;padding-top:1.5rem">
+                        <input type="checkbox" name="is_special" id="add_plan_special" value="1" onchange="document.getElementById('add_providers_wrap').style.display=this.checked?'block':'none'">
+                        <label for="add_plan_special" style="margin:0">Special Plan <small style="color:var(--text-muted)">(user can choose email server)</small></label>
+                    </div>
+                </div>
+                <div class="form-group" id="add_providers_wrap" style="display:none">
+                    <label>Allowed Providers <small style="color:var(--text-muted)">(comma-separated: smtp, sendgrid, mailgun, ses, resend, postmark, brevo)</small></label>
+                    <input type="text" name="allowed_providers" class="form-control" placeholder="e.g. smtp, sendgrid, mailgun">
                 </div>
                 <div class="form-group">
                     <label>Description</label>
@@ -364,7 +388,7 @@ require_once __DIR__ . '/../includes/layout_header.php';
 
     <div class="table-responsive">
     <table class="table">
-        <thead><tr><th>ID</th><th>Name</th><th>Price</th><th>Email Limit/mo</th><th>Subscribers</th><th>Active</th><th>Created</th><th>Actions</th></tr></thead>
+        <thead><tr><th>ID</th><th>Name</th><th>Price</th><th>Email Limit/mo</th><th>Per Hour</th><th>Special</th><th>Subscribers</th><th>Active</th><th>Created</th><th>Actions</th></tr></thead>
         <tbody>
         <?php foreach ($plans as $p): ?>
         <?php $featuresArr = json_decode($p['features'] ?? '[]', true) ?: []; ?>
@@ -378,6 +402,8 @@ require_once __DIR__ . '/../includes/layout_header.php';
             </td>
             <td><?= htmlspecialchars($currSym) ?><?= number_format((float)$p['price'], 2) ?>/mo</td>
             <td><?= number_format((int)$p['monthly_email_limit']) ?></td>
+            <td><?= (int)($p['emails_per_hour'] ?? 0) > 0 ? number_format((int)$p['emails_per_hour']) : '∞' ?></td>
+            <td><?= !empty($p['is_special']) ? '<span class="badge badge-info">✨ Special</span>' : '—' ?></td>
             <td><span class="badge badge-<?= (int)$p['subscriber_count'] > 0 ? 'success' : 'warning' ?>"><?= (int)$p['subscriber_count'] ?></span></td>
             <td><?= $p['is_active'] ? '<span class="badge badge-success">Active</span>' : '<span class="badge badge-danger">Inactive</span>' ?></td>
             <td style="font-size:.8rem"><?= htmlspecialchars(substr($p['created_at'], 0, 10)) ?></td>
@@ -388,6 +414,9 @@ require_once __DIR__ . '/../includes/layout_header.php';
                     <?= htmlspecialchars(json_encode($p['description'] ?? '')) ?>,
                     <?= htmlspecialchars(json_encode($p['price'])) ?>,
                     <?= (int)$p['monthly_email_limit'] ?>,
+                    <?= (int)($p['emails_per_hour'] ?? 0) ?>,
+                    <?= (int)(!empty($p['is_special'])) ?>,
+                    <?= htmlspecialchars(json_encode($p['allowed_providers'] ?? '')) ?>,
                     <?= htmlspecialchars(json_encode($p['features'] ?? '[]')) ?>,
                     <?= (int)$p['is_active'] ?>
                 )">Edit</button>
@@ -522,10 +551,22 @@ require_once __DIR__ . '/../includes/layout_header.php';
                     <label>Monthly Email Limit</label>
                     <input type="number" name="monthly_email_limit" id="ep_limit" class="form-control" min="0">
                 </div>
+                <div class="form-group">
+                    <label>Emails Per Hour <small style="color:var(--text-muted)">(0 = unlimited)</small></label>
+                    <input type="number" name="emails_per_hour" id="ep_per_hour" class="form-control" min="0" value="0">
+                </div>
                 <div class="form-group" style="display:flex;align-items:center;gap:.5rem;padding-top:1.5rem">
                     <input type="checkbox" name="is_active" id="ep_active" value="1">
                     <label for="ep_active" style="margin:0">Active</label>
                 </div>
+                <div class="form-group" style="display:flex;align-items:center;gap:.5rem;padding-top:1.5rem">
+                    <input type="checkbox" name="is_special" id="ep_special" value="1" onchange="document.getElementById('ep_providers_wrap').style.display=this.checked?'block':'none'">
+                    <label for="ep_special" style="margin:0">Special Plan</label>
+                </div>
+            </div>
+            <div class="form-group" id="ep_providers_wrap" style="display:none">
+                <label>Allowed Providers <small style="color:var(--text-muted)">(comma-separated)</small></label>
+                <input type="text" name="allowed_providers" id="ep_providers" class="form-control" placeholder="smtp, sendgrid, mailgun, ses, resend, postmark, brevo">
             </div>
             <div class="form-group">
                 <label>Description</label>
@@ -670,13 +711,19 @@ require_once __DIR__ . '/../includes/layout_header.php';
 </div>
 
 <script>
-function openEditPlanModal(id, name, desc, price, limit, featuresJson, isActive) {
+function openEditPlanModal(id, name, desc, price, limit, perHour, isSpecial, allowedProviders, featuresJson, isActive) {
     document.getElementById('ep_id').value = id;
     document.getElementById('ep_name').value = name;
     document.getElementById('ep_description').value = desc;
     document.getElementById('ep_price').value = price;
     document.getElementById('ep_limit').value = limit;
+    document.getElementById('ep_per_hour').value = perHour;
     document.getElementById('ep_active').checked = !!isActive;
+    document.getElementById('ep_special').checked = !!isSpecial;
+    var providers = [];
+    try { providers = allowedProviders ? JSON.parse(allowedProviders) : []; } catch(e) { providers = []; }
+    document.getElementById('ep_providers').value = Array.isArray(providers) ? providers.join(', ') : '';
+    document.getElementById('ep_providers_wrap').style.display = isSpecial ? 'block' : 'none';
     var features = [];
     try { features = JSON.parse(featuresJson); } catch(e) {}
     document.getElementById('ep_features').value = Array.isArray(features) ? features.join('\n') : '';

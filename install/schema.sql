@@ -183,10 +183,12 @@ CREATE TABLE IF NOT EXISTS sms_groups (
 -- SMS Sender IDs
 CREATE TABLE IF NOT EXISTS sms_sender_ids (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NULL,
     sender_id VARCHAR(11) NOT NULL UNIQUE,
     status ENUM('pending','approved','rejected') DEFAULT 'pending',
     sample_message TEXT,
-    submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_sid_user (user_id)
 );
 
 -- SMS Campaigns
@@ -267,6 +269,9 @@ CREATE TABLE IF NOT EXISTS email_plans (
     description TEXT,
     price DECIMAL(10,2) NOT NULL DEFAULT 0.00,
     monthly_email_limit INT NOT NULL DEFAULT 1000,
+    emails_per_hour INT NOT NULL DEFAULT 0,
+    is_special BOOLEAN NOT NULL DEFAULT FALSE,
+    allowed_providers JSON NULL,
     features JSON,
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -470,4 +475,24 @@ CREATE TABLE IF NOT EXISTS email_verification_otps (
     used BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_email_otp (email, otp_code)
+);
+
+-- Per-user email server settings (for special email plan subscribers)
+CREATE TABLE IF NOT EXISTS user_smtp_settings (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    label VARCHAR(100) NOT NULL DEFAULT 'My SMTP',
+    provider ENUM('smtp','sendgrid','mailgun','ses','resend','postmark','brevo') NOT NULL DEFAULT 'smtp',
+    is_active BOOLEAN DEFAULT FALSE,
+    smtp_host VARCHAR(255),
+    smtp_port SMALLINT DEFAULT 587,
+    smtp_username VARCHAR(255),
+    smtp_password_enc TEXT,
+    smtp_encryption ENUM('tls','ssl','none') DEFAULT 'tls',
+    from_name VARCHAR(100),
+    from_email VARCHAR(100),
+    api_key_enc TEXT,
+    extra_json JSON,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_uss_user (user_id)
 );

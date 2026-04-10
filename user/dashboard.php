@@ -394,7 +394,7 @@ require_once __DIR__ . '/../includes/layout_header.php';
             ?>
             <div style="background:rgba(108,99,255,.08);border:1px solid rgba(108,99,255,.2);border-radius:12px;padding:1rem;text-align:center">
                 <strong style="display:block;font-size:1.25rem;color:#6c63ff"><?= $pages ?> page<?= $pages > 1 ? 's' : '' ?></strong>
-                <span style="font-size:.8rem;color:#a0a0b0"><?= $chars_min ?>–<?= $chars_max ?> chars</span>
+                <span style="font-size:.8rem;color:var(--text-muted)"><?= $chars_min ?>–<?= $chars_max ?> chars</span>
                 <strong style="display:block;margin-top:.25rem"><?= htmlspecialchars($currSym) ?><?= number_format($smsUnitPrice * $pages, 2) ?>/recipient</strong>
             </div>
             <?php endfor; ?>

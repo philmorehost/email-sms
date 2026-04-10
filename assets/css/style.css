@@ -11,9 +11,9 @@
     --glass-bg:      rgba(255, 255, 255, 0.05);
     --glass-border:  rgba(255, 255, 255, 0.10);
     --glass-hover:   rgba(255, 255, 255, 0.08);
-    --text-primary:  #e0e0e0;
-    --text-secondary:#a0a0b0;
-    --text-muted:    #606070;
+    --text-primary:  #ededf0;
+    --text-secondary:#b8b8cc;
+    --text-muted:    #8888a8;
     --accent:        #6c63ff;
     --accent-2:      #00d4ff;
     --success:       #00ff88;
@@ -501,6 +501,7 @@ select option {
 textarea { resize: vertical; min-height: 100px; line-height: 1.5; }
 
 .form-hint { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.3rem; }
+.form-text  { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.3rem; display: block; }
 .form-error { font-size: 0.75rem; color: var(--danger); margin-top: 0.3rem; }
 
 .checkbox-group {
@@ -837,6 +838,40 @@ input[type=checkbox] {
 }
 
 .canvas-block:hover .canvas-block-actions { display: flex; }
+
+/* ─── Creator / Clipper Mode Switcher ───────────────────────────── */
+.mode-switcher {
+    display: flex;
+    gap: 0;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-sm);
+    padding: 3px;
+    width: fit-content;
+}
+
+.mode-btn {
+    padding: 0.4rem 1rem;
+    border: none;
+    background: transparent;
+    border-radius: 7px;
+    color: var(--text-muted);
+    font-size: 0.83rem;
+    cursor: pointer;
+    transition: var(--transition);
+    font-weight: 500;
+}
+
+.mode-btn.active {
+    background: var(--accent);
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(108,99,255,0.35);
+}
+
+.mode-btn:hover:not(.active) {
+    color: var(--text-primary);
+    background: rgba(255,255,255,0.06);
+}
 
 /* ─── CSV Import ─────────────────────────────────────────────────── */
 .csv-drop-zone {

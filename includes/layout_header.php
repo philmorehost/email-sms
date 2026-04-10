@@ -47,6 +47,13 @@ $isSuperAdmin = ($user['role'] ?? '') === 'superadmin';
             </a>
         </div>
 
+        <div class="nav-section">
+            <span class="nav-section-title">Settings</span>
+            <a href="/user/settings.php" class="nav-item <?= $activePage === 'settings' ? 'active' : '' ?>">
+                <span class="nav-icon">⚙️</span><span class="nav-label">Email Settings</span>
+            </a>
+        </div>
+
         <?php if ($isAdmin): ?>
         <div class="nav-section">
             <span class="nav-section-title">Admin — Marketing</span>

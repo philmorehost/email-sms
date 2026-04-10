@@ -21,7 +21,7 @@ $msgType = 'success';
  * Fetch contacts for a campaign and send emails via Mailer.
  * Returns [sentCount, failCount].
  */
-function sendCampaignEmails(\PDO $db, int $campaignId, int $groupId, string $subject, string $htmlBody): array {
+function sendCampaignEmails(\PDO $db, int $campaignId, int $groupId, string $subject, string $htmlBody, int $createdBy = 0): array {
     if ($groupId > 0) {
         $cStmt = $db->prepare(
             "SELECT email, first_name, last_name FROM email_contacts WHERE group_id = ? AND is_subscribed = 1"
@@ -34,13 +34,49 @@ function sendCampaignEmails(\PDO $db, int $campaignId, int $groupId, string $sub
     }
     $contacts = $cStmt->fetchAll();
 
+    // Resolve hourly email limit from the creator's subscription plan
+    $emailsPerHour = 0;
+    if ($createdBy > 0) {
+        try {
+            $planStmt = $db->prepare(
+                "SELECT ep.emails_per_hour FROM user_subscriptions us
+                 JOIN email_plans ep ON ep.id = us.plan_id
+                 WHERE us.user_id = ? AND us.status = 'active' LIMIT 1"
+            );
+            $planStmt->execute([$createdBy]);
+            $planRow = $planStmt->fetch();
+            if ($planRow) $emailsPerHour = (int)$planRow['emails_per_hour'];
+        } catch (\Exception $e) {}
+    }
+
     $db->prepare("UPDATE email_campaigns SET status='sending' WHERE id=?")->execute([$campaignId]);
 
-    $mailer    = new Mailer();
+    $mailer    = new Mailer($createdBy);
     $sentCount = 0;
     $failCount = 0;
+    $sentThisHour = 0;
+    $hourLimitReached = false;
+
+    // Count emails already sent in the last hour for this user
+    if ($emailsPerHour > 0 && $createdBy > 0) {
+        try {
+            $hStmt = $db->prepare(
+                "SELECT COUNT(*) FROM email_campaigns
+                 WHERE created_by = ? AND sent_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR)"
+            );
+            $hStmt->execute([$createdBy]);
+            $sentThisHour = (int)$hStmt->fetchColumn();
+        } catch (\Exception $e) {}
+    }
 
     foreach ($contacts as $contact) {
+        // Enforce hourly limit
+        if ($emailsPerHour > 0 && $sentThisHour + $sentCount >= $emailsPerHour) {
+            $hourLimitReached = true;
+            $failCount += count($contacts) - $sentCount - $failCount;
+            break;
+        }
+
         $personalised = str_replace(
             ['{{first_name}}', '{{last_name}}', '{{email}}'],
             [
@@ -58,7 +94,7 @@ function sendCampaignEmails(\PDO $db, int $campaignId, int $groupId, string $sub
         }
     }
 
-    $finalStatus = ($failCount > 0 && $sentCount === 0) ? 'failed' : 'sent';
+    $finalStatus = $hourLimitReached ? 'failed' : (($failCount > 0 && $sentCount === 0) ? 'failed' : 'sent');
     $db->prepare(
         "UPDATE email_campaigns SET status=?, sent_count=?, failed_count=?, total_recipients=?, sent_at=NOW() WHERE id=?"
     )->execute([$finalStatus, $sentCount, $failCount, count($contacts), $campaignId]);
@@ -143,7 +179,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $tpl  = $tplStmt->fetch();
                         $body = $tpl ? ($tpl['html_content'] ?? '') : $htmlContent;
 
-                        [$sentCount, $failCount] = sendCampaignEmails($db, $campaignId, $groupId, $subject, $body);
+                        [$sentCount, $failCount] = sendCampaignEmails($db, $campaignId, $groupId, $subject, $body, (int)($user['id'] ?? 0));
 
                         $msg     = "Campaign sent: {$sentCount} delivered, {$failCount} failed.";
                         $msgType = $failCount > 0 && $sentCount === 0 ? 'error' : ($failCount > 0 ? 'warning' : 'success');
@@ -216,7 +252,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     $groupId = (int)($campaign['group_id'] ?? 0);
 
-                    [$sentCount, $failCount] = sendCampaignEmails($db, $id, $groupId, $campaign['subject'], $body);
+                    [$sentCount, $failCount] = sendCampaignEmails($db, $id, $groupId, $campaign['subject'], $body, (int)($user['id'] ?? 0));
 
                     $msg     = "Campaign sent: {$sentCount} delivered, {$failCount} failed.";
                     $msgType = $failCount > 0 && $sentCount === 0 ? 'error' : ($failCount > 0 ? 'warning' : 'success');
@@ -487,10 +523,37 @@ require_once __DIR__ . '/../includes/layout_header.php';
                 </div>
 
                 <div class="form-group" id="htmlContentWrap">
-                    <label class="form-label" for="camp_html">HTML Content <span style="color:var(--danger)">*</span></label>
-                    <textarea id="camp_html" name="html_content" class="form-control" rows="12"
-                              placeholder="Paste or write your email HTML here. Use {{first_name}}, {{last_name}}, {{email}} for personalisation."></textarea>
-                    <span class="form-text">Supports <code>{{first_name}}</code>, <code>{{last_name}}</code>, <code>{{email}}</code> placeholders.</span>
+                    <!-- Creator / Clipper mode switch -->
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem">
+                        <label class="form-label" style="margin:0">HTML Content <span style="color:var(--danger)">*</span></label>
+                        <div class="mode-switcher" id="campModeSwitcher">
+                            <button type="button" class="mode-btn active" data-mode="clipper" onclick="setCampMode('clipper',this)">✂️ Clipper</button>
+                            <button type="button" class="mode-btn" data-mode="creator" onclick="setCampMode('creator',this)">🎨 Creator</button>
+                        </div>
+                    </div>
+                    <!-- Clipper: raw HTML textarea -->
+                    <div id="campClipperPane">
+                        <textarea id="camp_html" name="html_content" class="form-control" rows="12"
+                                  placeholder="Paste or write your email HTML here. Use {{first_name}}, {{last_name}}, {{email}} for personalisation."></textarea>
+                        <span class="form-text">Supports <code>{{first_name}}</code>, <code>{{last_name}}</code>, <code>{{email}}</code> placeholders.</span>
+                    </div>
+                    <!-- Creator: visual drag-and-drop builder -->
+                    <div id="campCreatorPane" style="display:none">
+                        <div style="display:grid;grid-template-columns:180px 1fr;gap:1rem">
+                            <div class="builder-blocks">
+                                <h4>📦 Blocks</h4>
+                                <div class="builder-blocks-list" id="campBlocksList"></div>
+                            </div>
+                            <div class="builder-canvas">
+                                <div id="campEmailCanvas">
+                                    <div class="canvas-drop-zone" id="campCanvasDropZone">
+                                        <span>⬇ Drag blocks here to build your email</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <span class="form-text" style="margin-top:.5rem">Drag blocks from the left panel onto the canvas. Switch to Clipper mode to edit the raw HTML.</span>
+                    </div>
                 </div>
 
                 <!-- Schedule -->
@@ -616,10 +679,36 @@ require_once __DIR__ . '/../includes/layout_header.php';
                     <input type="text" id="tpl_subject" name="tpl_subject" class="form-control" placeholder="e.g. Welcome to our service!">
                 </div>
                 <div class="form-group">
-                    <label class="form-label" for="tpl_html_content">HTML Content <span style="color:var(--danger)">*</span></label>
-                    <textarea id="tpl_html_content" name="tpl_html_content" class="form-control" rows="10" required
-                              placeholder="Paste your email HTML here. Use {{first_name}}, {{last_name}}, {{email}} for personalisation."></textarea>
-                    <span class="form-text">Supports <code>{{first_name}}</code>, <code>{{last_name}}</code>, <code>{{email}}</code> placeholders.</span>
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem">
+                        <label class="form-label" style="margin:0">HTML Content <span style="color:var(--danger)">*</span></label>
+                        <div class="mode-switcher" id="tplModeSwitcher">
+                            <button type="button" class="mode-btn active" data-mode="clipper" onclick="setTplMode('clipper',this)">✂️ Clipper</button>
+                            <button type="button" class="mode-btn" data-mode="creator" onclick="setTplMode('creator',this)">🎨 Creator</button>
+                        </div>
+                    </div>
+                    <!-- Clipper: raw HTML -->
+                    <div id="tplClipperPane">
+                        <textarea id="tpl_html_content" name="tpl_html_content" class="form-control" rows="10"
+                                  placeholder="Paste your email HTML here. Use {{first_name}}, {{last_name}}, {{email}} for personalisation."></textarea>
+                        <span class="form-text">Supports <code>{{first_name}}</code>, <code>{{last_name}}</code>, <code>{{email}}</code> placeholders.</span>
+                    </div>
+                    <!-- Creator: visual builder -->
+                    <div id="tplCreatorPane" style="display:none">
+                        <div style="display:grid;grid-template-columns:180px 1fr;gap:1rem">
+                            <div class="builder-blocks">
+                                <h4>📦 Blocks</h4>
+                                <div class="builder-blocks-list" id="tplBlocksList"></div>
+                            </div>
+                            <div class="builder-canvas">
+                                <div id="tplEmailCanvas">
+                                    <div class="canvas-drop-zone" id="tplCanvasDropZone">
+                                        <span>⬇ Drag blocks here to build your email</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <span class="form-text" style="margin-top:.5rem">Drag blocks onto the canvas. Switch to Clipper to edit raw HTML.</span>
+                    </div>
                 </div>
             </div>
             <div class="modal-footer">
@@ -643,6 +732,133 @@ function toggleScheduleFields(val) {
     var fields = document.getElementById('scheduleFields');
     if (!fields) return;
     fields.style.display = (val === 'later') ? 'block' : 'none';
+}
+
+// ── Creator / Clipper mode switch helpers ─────────────────────────────────────
+function makeBuilder(canvasId, dropZoneId, blocksListId, htmlTargetId) {
+    var blockTypes = {
+        header:  { icon: '🔤', label: 'Header',   html: '<h1 style="text-align:center;color:#333;font-family:sans-serif;padding:20px">Your Header Text</h1>' },
+        text:    { icon: '📝', label: 'Text',      html: '<p style="color:#555;font-family:sans-serif;padding:10px 20px;line-height:1.6">Your paragraph text goes here.</p>' },
+        image:   { icon: '🖼️', label: 'Image',     html: '<div style="text-align:center;padding:10px"><img src="https://via.placeholder.com/600x200" style="max-width:100%;height:auto" alt="Image"></div>' },
+        button:  { icon: '🔘', label: 'Button',    html: '<div style="text-align:center;padding:20px"><a href="#" style="background:#6c63ff;color:#fff;padding:12px 30px;border-radius:8px;text-decoration:none;font-family:sans-serif;font-weight:bold">Click Here</a></div>' },
+        divider: { icon: '➖', label: 'Divider',   html: '<hr style="border:none;border-top:1px solid #eee;margin:10px 20px">' },
+        spacer:  { icon: '⬜', label: 'Spacer',    html: '<div style="height:20px"></div>' },
+    };
+    var blocks    = [];
+    var dragData  = null;
+    var canvas    = document.getElementById(canvasId);
+    var dropZone  = document.getElementById(dropZoneId);
+    var blocksList= document.getElementById(blocksListId);
+    var htmlTarget= document.getElementById(htmlTargetId);
+    if (!canvas || !dropZone) return;
+
+    Object.entries(blockTypes).forEach(function([type, info]) {
+        var el = document.createElement('div');
+        el.className   = 'block-item';
+        el.draggable   = true;
+        el.dataset.type= type;
+        el.innerHTML   = '<span>' + info.icon + '</span><span>' + info.label + '</span>';
+        el.addEventListener('dragstart', function(e) { dragData = type; e.dataTransfer.effectAllowed = 'copy'; });
+        if (blocksList) blocksList.appendChild(el);
+    });
+
+    dropZone.addEventListener('dragover',  function(e) { e.preventDefault(); dropZone.classList.add('drag-over'); });
+    dropZone.addEventListener('dragleave', function()  { dropZone.classList.remove('drag-over'); });
+    dropZone.addEventListener('drop',      function(e) {
+        e.preventDefault(); dropZone.classList.remove('drag-over');
+        if (dragData) { addBlock(dragData); dragData = null; }
+    });
+
+    function addBlock(type, customHtml) {
+        var id   = 'blk_' + Date.now();
+        var html = customHtml || blockTypes[type].html || '';
+        blocks.push({ id: id, type: type, html: html });
+        render(); syncHtml();
+    }
+
+    function render() {
+        if (blocks.length === 0) { dropZone.style.display = 'flex'; return; }
+        dropZone.style.display = 'none';
+        canvas.querySelectorAll('.canvas-block').forEach(function(b) { b.remove(); });
+        blocks.forEach(function(block, idx) {
+            var el = document.createElement('div');
+            el.className  = 'canvas-block';
+            el.dataset.id = block.id;
+            el.innerHTML =
+                '<div class="canvas-block-actions">' +
+                    '<button type="button" class="btn btn-sm btn-secondary" onclick="editBuilderBlock(\'' + canvasId + '\',\'' + block.id + '\')" title="Edit">✏️</button>' +
+                    '<button type="button" class="btn btn-sm btn-secondary" onclick="moveBuilderBlock(\'' + canvasId + '\',' + idx + ',-1)" ' + (idx===0?'disabled':'') + ' title="Up">↑</button>' +
+                    '<button type="button" class="btn btn-sm btn-secondary" onclick="moveBuilderBlock(\'' + canvasId + '\',' + idx + ',1)" ' + (idx===blocks.length-1?'disabled':'') + ' title="Down">↓</button>' +
+                    '<button type="button" class="btn btn-sm btn-danger"    onclick="removeBuilderBlock(\'' + canvasId + '\',\'' + block.id + '\')" title="Delete">🗑️</button>' +
+                '</div>' +
+                '<div class="canvas-block-content">' + block.html + '</div>';
+            canvas.insertBefore(el, dropZone);
+        });
+    }
+
+    function syncHtml() {
+        var full = '<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:sans-serif;background:#fff;margin:0;padding:0}.email-wrap{max-width:600px;margin:0 auto;background:#fff}</style></head><body><div class="email-wrap">' + blocks.map(function(b){return b.html;}).join('\n') + '</div></body></html>';
+        if (htmlTarget) htmlTarget.value = full;
+    }
+
+    // Expose block manipulation to global onclick handlers using the canvasId as key
+    if (!window.__builders) window.__builders = {};
+    window.__builders[canvasId] = { blocks: blocks, render: render, syncHtml: syncHtml };
+}
+
+window.editBuilderBlock = function(canvasId, id) {
+    var b = window.__builders && window.__builders[canvasId];
+    if (!b) return;
+    var block = b.blocks.find(function(x){ return x.id === id; });
+    if (!block) return;
+    var newHtml = prompt('Edit HTML:', block.html);
+    if (newHtml !== null) { block.html = newHtml; b.render(); b.syncHtml(); }
+};
+window.removeBuilderBlock = function(canvasId, id) {
+    var b = window.__builders && window.__builders[canvasId];
+    if (!b) return;
+    b.blocks.splice(b.blocks.findIndex(function(x){ return x.id === id; }), 1);
+    b.render(); b.syncHtml();
+    if (b.blocks.length === 0) { var dz = document.getElementById(canvasId).querySelector('.canvas-drop-zone'); if(dz) dz.style.display='flex'; }
+};
+window.moveBuilderBlock = function(canvasId, idx, dir) {
+    var b = window.__builders && window.__builders[canvasId];
+    if (!b) return;
+    var target = idx + dir;
+    if (target < 0 || target >= b.blocks.length) return;
+    var tmp = b.blocks[idx]; b.blocks[idx] = b.blocks[target]; b.blocks[target] = tmp;
+    b.render(); b.syncHtml();
+};
+
+function setCampMode(mode, btn) {
+    document.querySelectorAll('#campModeSwitcher .mode-btn').forEach(function(b){ b.classList.remove('active'); });
+    btn.classList.add('active');
+    var clipper = document.getElementById('campClipperPane');
+    var creator = document.getElementById('campCreatorPane');
+    if (mode === 'creator') {
+        clipper.style.display = 'none';
+        creator.style.display = 'block';
+        // Copy current textarea content to builder HTML target if it exists
+        makeBuilder('campEmailCanvas', 'campCanvasDropZone', 'campBlocksList', 'camp_html');
+    } else {
+        creator.style.display = 'none';
+        clipper.style.display = 'block';
+    }
+}
+
+function setTplMode(mode, btn) {
+    document.querySelectorAll('#tplModeSwitcher .mode-btn').forEach(function(b){ b.classList.remove('active'); });
+    btn.classList.add('active');
+    var clipper = document.getElementById('tplClipperPane');
+    var creator = document.getElementById('tplCreatorPane');
+    if (mode === 'creator') {
+        clipper.style.display = 'none';
+        creator.style.display = 'block';
+        makeBuilder('tplEmailCanvas', 'tplCanvasDropZone', 'tplBlocksList', 'tpl_html_content');
+    } else {
+        creator.style.display = 'none';
+        clipper.style.display = 'block';
+    }
 }
 
 // Handle tab-link anchors (e.g. "New Campaign" button in page header)

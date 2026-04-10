@@ -23,6 +23,14 @@ try {
     }
 } catch (\Exception $e) {}
 
+// Migration: ensure user_id column exists on sms_sender_ids
+try {
+    $cols2 = $db->query("SHOW COLUMNS FROM sms_sender_ids LIKE 'user_id'")->fetchAll();
+    if (empty($cols2)) {
+        $db->exec("ALTER TABLE sms_sender_ids ADD COLUMN user_id INT NULL AFTER id, ADD INDEX idx_sid_user (user_id)");
+    }
+} catch (\Exception $e) {}
+
 // ── Helpers (same as admin/sms.php) ──────────────────────────────────────────
 function calculateSmsPages2(string $message): int {
     $len = mb_strlen($message);
@@ -60,8 +68,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $phones  = array_values(array_unique(array_filter(array_map('trim', explode("\n", $_POST['recipients'] ?? '')))));
             $message = trim($_POST['message'] ?? '');
             $sender  = sanitize($_POST['sender_id'] ?? '');
-            $route   = sanitize($_POST['route'] ?? 'bulk');
-            if (!in_array($route, ['bulk','corporate','global'], true)) $route = 'bulk';
+            $route   = 'bulk';
+            if (!in_array($route, ['bulk'], true)) $route = 'bulk';
 
             if (empty($phones)) {
                 $msg = 'Please enter at least one phone number.'; $msgType = 'error';
@@ -96,11 +104,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $msg = 'SMS API not configured. Contact your administrator.'; $msgType = 'error';
                         } else {
                             $recipStr = implode(',', $phones);
-                            $result   = match ($route) {
-                                'corporate' => $sms->sendCorporateSMS($sender, $recipStr, $message),
-                                'global'    => $sms->sendGlobalSMS($sender, $recipStr, $message),
-                                default     => $sms->sendBulkSMS($sender, $recipStr, $message),
-                            };
+                            $result   = $sms->sendBulkSMS($sender, $recipStr, $message);
 
                             if (!empty($result['success'])) {
                                 $db->prepare("UPDATE sms_campaigns SET status='sent', sent_count=?, sent_at=NOW() WHERE id=?")->execute([count($phones), $cid]);
@@ -122,6 +126,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
         }
+
+        if ($action === 'register_sender_id') {
+            $sid     = strtoupper(trim(preg_replace('/[^A-Za-z0-9]/', '', $_POST['new_sender_id'] ?? '')));
+            $sample  = trim($_POST['sample_message'] ?? '');
+            if ($sid === '' || strlen($sid) > 11) {
+                $msg = 'Sender ID must be 1–11 alphanumeric characters.'; $msgType = 'error';
+            } else {
+                try {
+                    // Check for duplicate for this user
+                    $chk = $db->prepare("SELECT id FROM sms_sender_ids WHERE user_id=? AND sender_id=?");
+                    $chk->execute([$uid, $sid]);
+                    if ($chk->fetch()) {
+                        $msg = 'You have already submitted this Sender ID.'; $msgType = 'error';
+                    } else {
+                        $db->prepare("INSERT INTO sms_sender_ids (user_id, sender_id, sample_message, status, submitted_at) VALUES (?,?,?,'pending',NOW())")
+                           ->execute([$uid, $sid, $sample]);
+                        $msg = '✅ Sender ID submitted for approval. An admin will review it shortly.';
+                    }
+                } catch (\Exception $e) {
+                    error_log('register_sender_id: ' . $e->getMessage());
+                    $msg = 'An error occurred. Please try again.'; $msgType = 'error';
+                }
+            }
+        }
     }
 }
 
@@ -130,9 +158,18 @@ $walletBalance = getWallet2($db, $uid);
 $smsUnitPrice  = getSmsPrice2($db);
 $currSym       = currencySymbol();
 
+// Approved sender IDs available system-wide
 $senderIds = [];
 try {
     $senderIds = $db->query("SELECT sender_id FROM sms_sender_ids WHERE status='approved' ORDER BY sender_id")->fetchAll(\PDO::FETCH_COLUMN);
+} catch (\Exception $e) {}
+
+// This user's own sender ID registrations
+$mySenderIds = [];
+try {
+    $siStmt = $db->prepare("SELECT * FROM sms_sender_ids WHERE user_id=? ORDER BY submitted_at DESC");
+    $siStmt->execute([$uid]);
+    $mySenderIds = $siStmt->fetchAll();
 } catch (\Exception $e) {}
 
 $myCampaigns = [];
@@ -148,7 +185,7 @@ require_once __DIR__ . '/../includes/layout_header.php';
 ?>
 <style>
 .char-counter {
-    font-size:.8rem;color:#606070;text-align:right;margin-top:.25rem
+    font-size:.8rem;color:var(--text-muted);text-align:right;margin-top:.25rem
 }
 .pages-badge {
     display:inline-flex;align-items:center;gap:.35rem;
@@ -197,15 +234,7 @@ require_once __DIR__ . '/../includes/layout_header.php';
                 </select>
             </div>
 
-            <div class="form-group">
-                <label>Route</label>
-                <select name="route" class="form-control">
-                    <option value="bulk">Bulk SMS</option>
-                    <option value="corporate">Corporate SMS</option>
-                    <option value="global">Global SMS</option>
-                </select>
-            </div>
-
+            <input type="hidden" name="route" value="bulk">
             <div class="form-group">
                 <label>Recipients <span style="color:red">*</span></label>
                 <textarea name="recipients" class="form-control" rows="4"
@@ -225,7 +254,7 @@ require_once __DIR__ . '/../includes/layout_header.php';
             </div>
 
             <div id="costSummary" style="background:rgba(108,99,255,.08);border:1px solid rgba(108,99,255,.2);border-radius:10px;padding:1rem;margin-bottom:1rem;display:none">
-                <div style="font-size:.9rem;color:#a0a0b0">Cost estimate</div>
+                <div style="font-size:.9rem;color:var(--text-muted)">Cost estimate</div>
                 <div id="costDetail" style="font-size:1.1rem;font-weight:700;color:var(--accent)"></div>
             </div>
 
@@ -277,6 +306,64 @@ require_once __DIR__ . '/../includes/layout_header.php';
                 <td><span class="badge badge-<?= $c['status'] === 'sent' ? 'success' : ($c['status'] === 'failed' ? 'danger' : 'warning') ?>"><?= $c['status'] ?></span></td>
                 <td><?= number_format((int)$c['sent_count']) ?></td>
                 <td><?= timeAgo($c['created_at']) ?></td>
+            </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        </div>
+        <?php endif; ?>
+    </div>
+</div>
+</div>
+
+<!-- ── Sender ID Registration ───────────────────────────────────────────────── -->
+<div style="margin-top:2rem">
+<div class="dashboard-grid" style="grid-template-columns:1fr 1fr">
+    <!-- Register form -->
+    <div class="card">
+        <div class="card-header"><h3>🆔 Register Sender ID</h3></div>
+        <div class="card-body">
+            <p style="color:var(--text-muted);font-size:.9rem;margin-bottom:1rem">
+                Sender IDs appear as the "From" name on your SMS. They are up to 11 alphanumeric characters and require admin approval before use.
+            </p>
+            <form method="POST">
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken()) ?>">
+                <input type="hidden" name="action" value="register_sender_id">
+                <div class="form-group">
+                    <label>Sender ID <span style="color:red">*</span></label>
+                    <input type="text" name="new_sender_id" class="form-control" maxlength="11" pattern="[A-Za-z0-9]+" required placeholder="e.g. MYBRAND">
+                    <small style="color:var(--text-muted)">Max 11 alphanumeric characters, no spaces.</small>
+                </div>
+                <div class="form-group">
+                    <label>Sample Message <span style="color:var(--text-muted)">(optional)</span></label>
+                    <textarea name="sample_message" class="form-control" rows="3" placeholder="Example SMS that will be sent with this sender ID..."></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary">Submit for Approval</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- My sender IDs -->
+    <div class="card">
+        <div class="card-header"><h3>📋 My Sender IDs</h3></div>
+        <?php if (empty($mySenderIds)): ?>
+        <p class="empty-state" style="padding:1.5rem">No sender IDs registered yet.</p>
+        <?php else: ?>
+        <div class="table-wrap">
+        <table class="table" style="font-size:.85rem">
+            <thead><tr><th>Sender ID</th><th>Status</th><th>Submitted</th></tr></thead>
+            <tbody>
+            <?php foreach ($mySenderIds as $si): ?>
+            <tr>
+                <td><strong><?= htmlspecialchars($si['sender_id']) ?></strong></td>
+                <td>
+                    <?php
+                    $badgeMap = ['pending'=>'warning','approved'=>'success','rejected'=>'danger'];
+                    $badge    = $badgeMap[$si['status']] ?? 'warning';
+                    ?>
+                    <span class="badge badge-<?= $badge ?>"><?= htmlspecialchars($si['status']) ?></span>
+                </td>
+                <td><?= htmlspecialchars(substr($si['submitted_at'] ?? '', 0, 10)) ?></td>
             </tr>
             <?php endforeach; ?>
             </tbody>

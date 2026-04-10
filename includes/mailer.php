@@ -7,9 +7,38 @@ require_once __DIR__ . '/helpers.php';
 class Mailer {
     private array $settings = [];
 
-    public function __construct() {
+    public function __construct(int $userId = 0) {
         try {
             $db = getDB();
+            // Try per-user SMTP settings first (special plan users)
+            if ($userId > 0) {
+                $ustmt = $db->prepare(
+                    "SELECT * FROM user_smtp_settings WHERE user_id = ? AND is_active = 1 LIMIT 1"
+                );
+                $ustmt->execute([$userId]);
+                $userSettings = $ustmt->fetch();
+                if ($userSettings) {
+                    // Map user SMTP record to the same key format as smtp_settings
+                    $provider = $userSettings['provider'];
+                    $mapped   = [
+                        'provider'              => $provider,
+                        'from_email'            => $userSettings['from_email'] ?? '',
+                        'from_name'             => $userSettings['from_name'] ?? '',
+                        'host'                  => $userSettings['smtp_host'] ?? '',
+                        'port'                  => $userSettings['smtp_port'] ?? 587,
+                        'username'              => $userSettings['smtp_username'] ?? '',
+                        'password_encrypted'    => $userSettings['smtp_password_enc'] ?? '',
+                        'encryption'            => $userSettings['smtp_encryption'] ?? 'tls',
+                    ];
+                    // For API-key providers, put the encrypted key under the provider-specific field
+                    if (!empty($userSettings['api_key_enc'])) {
+                        $mapped[$provider . '_api_key_encrypted'] = $userSettings['api_key_enc'];
+                    }
+                    $this->settings = $mapped;
+                    return;
+                }
+            }
+            // Fall back to system-wide SMTP settings
             $stmt = $db->prepare("SELECT * FROM smtp_settings WHERE id = 1");
             $stmt->execute();
             $this->settings = $stmt->fetch() ?: [];

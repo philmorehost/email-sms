@@ -48,6 +48,16 @@ try {
         is_active BOOLEAN DEFAULT TRUE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )");
+    // Add emails_per_hour / is_special / allowed_providers if missing
+    $cols_ep = $db->query("SHOW COLUMNS FROM email_plans LIKE 'emails_per_hour'")->fetchAll();
+    if (empty($cols_ep)) {
+        $db->exec("ALTER TABLE email_plans ADD COLUMN emails_per_hour INT NOT NULL DEFAULT 0 AFTER monthly_email_limit");
+    }
+    $cols_sp = $db->query("SHOW COLUMNS FROM email_plans LIKE 'is_special'")->fetchAll();
+    if (empty($cols_sp)) {
+        $db->exec("ALTER TABLE email_plans ADD COLUMN is_special BOOLEAN NOT NULL DEFAULT FALSE AFTER emails_per_hour");
+        $db->exec("ALTER TABLE email_plans ADD COLUMN allowed_providers JSON NULL AFTER is_special");
+    }
 } catch (\Exception $e) {}
 
 // ── Flash helpers ─────────────────────────────────────────────────────────────
@@ -322,7 +332,7 @@ $myPlan         = null;
 try {
     $subStmt = $db->prepare(
         "SELECT s.*, ep.name AS plan_name, ep.monthly_email_limit, ep.price AS plan_price,
-                ep.features, ep.description
+                ep.features, ep.description, ep.emails_per_hour, ep.is_special, ep.allowed_providers
          FROM user_subscriptions s
          JOIN email_plans ep ON ep.id = s.plan_id
          WHERE s.user_id = ? AND s.status = 'active'
@@ -435,110 +445,46 @@ require_once __DIR__ . '/includes/layout_header.php';
 
 <!-- Tabs -->
 <div class="tabs">
-    <a href="/billing.php?tab=wallet"       class="tab-btn <?= $activeTab === 'wallet'       ? 'active' : '' ?>">💼 Buy SMS Credits</a>
+    <a href="/billing.php?tab=wallet"       class="tab-btn <?= $activeTab === 'wallet'       ? 'active' : '' ?>">💼 SMS Wallet</a>
     <a href="/billing.php?tab=email_plans"  class="tab-btn <?= $activeTab === 'email_plans'  ? 'active' : '' ?>">📧 Email Plans</a>
-    <a href="/billing.php?tab=requests"     class="tab-btn <?= $activeTab === 'requests'     ? 'active' : '' ?>">📋 My Requests</a>
     <a href="/billing.php?tab=transactions" class="tab-btn <?= $activeTab === 'transactions' ? 'active' : '' ?>">📊 Transactions</a>
 </div>
 
 <!-- ── BUY CREDITS TAB ──────────────────────────────────────────────────────── -->
 <div class="tab-pane <?= $activeTab === 'wallet' ? 'active' : '' ?>">
 
-    <!-- SMS page pricing info -->
-    <div class="sms-calc">
-        <h4>📐 SMS Page Calculation</h4>
-        <div class="sms-calc-grid">
-            <div class="sms-calc-item">
-                <strong>1 page</strong>
-                <small>Up to 160 chars</small>
+    <!-- SMS wallet balance & pricing info -->
+    <div class="card" style="margin-bottom:1.5rem">
+        <div class="card-header"><h3>💼 SMS Wallet</h3></div>
+        <div class="card-body">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem;margin-bottom:1.25rem">
+                <div>
+                    <div style="font-size:.8rem;color:var(--text-muted)">Current Balance</div>
+                    <div style="font-size:2rem;font-weight:800;color:var(--accent)"><?= htmlspecialchars($currSym) ?><?= number_format($walletBalance, 2) ?></div>
+                    <div style="font-size:.82rem;color:var(--text-muted)">SMS cost: <?= htmlspecialchars($currSym) ?><?= number_format($smsUnitPrice, 2) ?>/page · <?= $smsUnitPrice > 0 ? number_format((int)floor($walletBalance / $smsUnitPrice)) : '—' ?> pages available</div>
+                </div>
+                <a href="/deposit.php" class="btn btn-primary">💰 Top Up Wallet</a>
             </div>
-            <div class="sms-calc-item">
-                <strong>2 pages</strong>
-                <small>161 – 306 chars</small>
-            </div>
-            <div class="sms-calc-item">
-                <strong>3 pages</strong>
-                <small>307 – 459 chars</small>
-            </div>
-            <div class="sms-calc-item">
-                <strong><?= htmlspecialchars($currSym) ?><?= number_format($smsUnitPrice, 2) ?>/page</strong>
-                <small>Current unit price</small>
-            </div>
-            <div class="sms-calc-item">
-                <strong><?= htmlspecialchars($currSym) ?><?= number_format($smsUnitPrice * 2, 2) ?></strong>
-                <small>2-page SMS cost</small>
-            </div>
-            <div class="sms-calc-item">
-                <strong><?= htmlspecialchars($currSym) ?><?= number_format($smsUnitPrice * 3, 2) ?></strong>
-                <small>3-page SMS cost</small>
+            <p style="color:var(--text-muted);font-size:.88rem;margin-bottom:1rem">
+                Your wallet balance is debited automatically each time you send SMS. No package purchase required — just keep your wallet funded.
+            </p>
+            <div class="sms-calc">
+                <h4>📐 SMS Page Calculation</h4>
+                <div class="sms-calc-grid">
+                    <div class="sms-calc-item"><strong>1 page</strong><small>Up to 160 chars</small></div>
+                    <div class="sms-calc-item"><strong>2 pages</strong><small>161–306 chars</small></div>
+                    <div class="sms-calc-item"><strong>3 pages</strong><small>307–459 chars</small></div>
+                    <div class="sms-calc-item"><strong><?= htmlspecialchars($currSym) ?><?= number_format($smsUnitPrice, 2) ?>/page</strong><small>Unit price</small></div>
+                    <div class="sms-calc-item"><strong><?= htmlspecialchars($currSym) ?><?= number_format($smsUnitPrice * 2, 2) ?></strong><small>2-page SMS</small></div>
+                    <div class="sms-calc-item"><strong><?= htmlspecialchars($currSym) ?><?= number_format($smsUnitPrice * 3, 2) ?></strong><small>3-page SMS</small></div>
+                </div>
+                <p style="font-size:.82rem;color:var(--text-muted);margin:.75rem 0 0">
+                    After 160 characters, each page = 153 characters. Debit = pages × recipients × <?= htmlspecialchars($currSym) ?><?= number_format($smsUnitPrice, 2) ?>/page.
+                </p>
             </div>
         </div>
-        <p style="font-size:.82rem;color:var(--text-muted);margin:.75rem 0 0">
-            After 160 characters, each page = 153 characters. Debit = (number of pages) × (number of recipients) × (<?= htmlspecialchars($currSym) ?><?= number_format($smsUnitPrice, 2) ?>/page).
-        </p>
     </div>
 
-    <?php if (empty($packages)): ?>
-    <div class="card">
-        <div class="card-body" style="text-align:center;padding:3rem;color:var(--text-muted)">
-            <p>No SMS packages available at the moment. Please contact an administrator.</p>
-        </div>
-    </div>
-    <?php else: ?>
-    <p style="color:var(--text-muted);margin-bottom:1.25rem">
-        Use your wallet balance to buy SMS credits instantly, or submit a purchase request for admin approval.
-        <a href="/deposit.php" class="btn btn-sm btn-secondary" style="margin-left:.5rem">💰 Deposit Funds</a>
-    </p>
-    <div class="packages-grid">
-        <?php
-        $popularIndex = count($packages) > 1 ? (int)floor(count($packages) / 2) : -1;
-        $billingLabels = ['one_time' => 'One-Time', 'monthly' => 'Monthly', 'quarterly' => 'Quarterly', 'yearly' => 'Yearly'];
-        foreach ($packages as $idx => $pkg):
-            $isPopular = ($idx === $popularIndex);
-            $bLabel    = $billingLabels[$pkg['billing_period'] ?? 'one_time'] ?? 'One-Time';
-            $canAfford = $walletBalance >= (float)$pkg['price'];
-        ?>
-        <div class="pkg-card <?= $isPopular ? 'popular' : '' ?>">
-            <?php if ($isPopular): ?>
-            <div class="pkg-popular-badge">⭐ Most Popular</div>
-            <?php endif; ?>
-            <div class="pkg-period"><?= htmlspecialchars($bLabel) ?></div>
-            <div class="pkg-name"><?= htmlspecialchars($pkg['name']) ?></div>
-            <div class="pkg-credits"><?= number_format((int)$pkg['credits']) ?></div>
-            <div class="pkg-credits-label">SMS Units / Credits</div>
-            <div class="pkg-price">
-                <?= htmlspecialchars($currSym) ?><?= number_format((float)$pkg['price'], 2) ?>
-                <?php if ($pkg['billing_period'] !== 'one_time'): ?>
-                <small>/<?= strtolower(substr($bLabel, 0, 2)) ?></small>
-                <?php endif; ?>
-            </div>
-            <?php if ($canAfford): ?>
-            <form method="POST" action="/billing.php" style="margin-bottom:.5rem">
-                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken()) ?>">
-                <input type="hidden" name="action" value="buy_sms_with_wallet">
-                <input type="hidden" name="package_id" value="<?= (int)$pkg['id'] ?>">
-                <button type="submit" class="btn btn-primary" style="width:100%"
-                        onclick="return confirm('Buy <?= (int)$pkg['credits'] ?> credits for <?= htmlspecialchars($currSym) ?><?= number_format((float)$pkg['price'], 2) ?> from wallet?')">
-                    💰 Buy with Wallet
-                </button>
-            </form>
-            <?php else: ?>
-            <a href="/deposit.php" class="btn btn-secondary" style="width:100%;text-align:center;display:block;margin-bottom:.5rem">
-                💳 Deposit to Buy
-            </a>
-            <?php endif; ?>
-            <form method="POST" action="/billing.php">
-                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken()) ?>">
-                <input type="hidden" name="action" value="request_purchase">
-                <input type="hidden" name="package_id" value="<?= (int)$pkg['id'] ?>">
-                <button type="submit" class="btn btn-secondary" style="width:100%;font-size:.8rem">
-                    📋 Request (Admin Approval)
-                </button>
-            </form>
-        </div>
-        <?php endforeach; ?>
-    </div>
-    <?php endif; ?>
 </div>
 
 <!-- ── EMAIL PLANS TAB ────────────────────────────────────────────────────── -->
@@ -625,14 +571,30 @@ require_once __DIR__ . '/includes/layout_header.php';
             <?php elseif ($isPopular): ?>
             <div class="pkg-popular-badge">⭐ Most Popular</div>
             <?php endif; ?>
-            <div class="pkg-period">Monthly Email Plan</div>
+            <div class="pkg-period">
+                Monthly Email Plan
+                <?php if (!empty($ep['is_special'])): ?>
+                &nbsp;<span style="background:linear-gradient(135deg,#6c63ff,#00d4ff);color:#fff;border-radius:6px;padding:1px 6px;font-size:.72rem;font-weight:700">✨ Special</span>
+                <?php endif; ?>
+            </div>
             <div class="pkg-name"><?= htmlspecialchars($ep['name']) ?></div>
             <div class="pkg-credits"><?= number_format((int)$ep['monthly_email_limit']) ?></div>
             <div class="pkg-credits-label">Emails / Month</div>
+            <?php if ((int)($ep['emails_per_hour'] ?? 0) > 0): ?>
+            <div style="font-size:.78rem;color:var(--text-muted);margin:.2rem 0">Max <?= number_format((int)$ep['emails_per_hour']) ?> emails/hour</div>
+            <?php endif; ?>
             <div class="pkg-price">
                 <?= htmlspecialchars($currSym) ?><?= number_format((float)$ep['price'], 2) ?>
                 <small>/month</small>
             </div>
+            <?php if (!empty($ep['is_special'])): ?>
+            <?php $planProviders = json_decode($ep['allowed_providers'] ?? '[]', true) ?: []; ?>
+            <?php if (!empty($planProviders)): ?>
+            <div style="font-size:.8rem;color:var(--text-muted);margin:.5rem 0;padding:.5rem;background:rgba(108,99,255,.08);border-radius:8px">
+                🔌 Includes: <?= htmlspecialchars(implode(', ', $planProviders)) ?> — you can configure your own API keys in <a href="/user/settings.php">Email Settings</a>.
+            </div>
+            <?php endif; ?>
+            <?php endif; ?>
             <?php if (!empty($featuresArr)): ?>
             <ul style="list-style:none;padding:0;margin:.75rem 0;font-size:.83rem;color:var(--text-muted)">
                 <?php foreach ($featuresArr as $f): ?>
@@ -676,48 +638,8 @@ require_once __DIR__ . '/includes/layout_header.php';
     <?php endif; ?>
 </div>
 
-<!-- ── MY REQUESTS TAB ────────────────────────────────────────────────────── -->
-<div class="tab-pane <?= $activeTab === 'requests' ? 'active' : '' ?>">
-    <?php if (empty($myRequests)): ?>
-    <div class="card">
-        <div class="card-body" style="text-align:center;padding:3rem;color:var(--text-muted)">
-            <p>No purchase requests yet. <a href="/billing.php?tab=wallet">Buy some credits</a>.</p>
-        </div>
-    </div>
-    <?php else: ?>
-    <div class="table-responsive">
-    <table class="table">
-        <thead><tr><th>Package</th><th>Credits</th><th>Price</th><th>Billing</th><th>Status</th><th>Requested</th><th>Processed</th></tr></thead>
-        <tbody>
-        <?php
-        $billingLabels = ['one_time' => 'One-Time', 'monthly' => 'Monthly', 'quarterly' => 'Quarterly', 'yearly' => 'Yearly'];
-        foreach ($myRequests as $req):
-        ?>
-        <tr>
-            <td><?= htmlspecialchars($req['package_name'] ?? '—') ?></td>
-            <td><?= number_format((int)$req['credits']) ?></td>
-            <td><?= htmlspecialchars($currSym) ?><?= number_format((float)$req['price'], 2) ?></td>
-            <td><?= htmlspecialchars($billingLabels[$req['billing_period'] ?? 'one_time'] ?? 'One-Time') ?></td>
-            <td>
-                <?php if ($req['status'] === 'pending'): ?>
-                    <span class="badge badge-warning">⏳ Pending</span>
-                <?php elseif ($req['status'] === 'approved'): ?>
-                    <span class="badge badge-success">✅ Approved</span>
-                <?php else: ?>
-                    <span class="badge badge-danger">❌ Rejected</span>
-                    <?php if (!empty($req['notes'])): ?>
-                    <br><small style="color:var(--text-muted)"><?= htmlspecialchars($req['notes']) ?></small>
-                    <?php endif; ?>
-                <?php endif; ?>
-            </td>
-            <td><?= timeAgo($req['requested_at']) ?></td>
-            <td><?= $req['processed_at'] ? timeAgo($req['processed_at']) : '—' ?></td>
-        </tr>
-        <?php endforeach; ?>
-        </tbody>
-    </table>
-    </div>
-    <?php endif; ?>
+<!-- ── MY REQUESTS TAB (hidden — SMS packages removed) ────────────────────── -->
+<div class="tab-pane" style="display:none">
 </div>
 
 <!-- ── TRANSACTIONS TAB ───────────────────────────────────────────────────── -->

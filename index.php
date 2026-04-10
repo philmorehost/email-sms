@@ -58,7 +58,7 @@ body { display: block; }
     -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
 }
 .lp-nav-links { display: flex; gap: 2rem; align-items: center; }
-.lp-nav-links a { color: #a0a0b0; font-size: .9rem; transition: color .2s; }
+.lp-nav-links a { color: #b8b8cc; font-size: .9rem; transition: color .2s; }
 .lp-nav-links a:hover { color: #fff; }
 .lp-nav-actions { display: flex; gap: .75rem; align-items: center; }
 
@@ -92,7 +92,7 @@ body { display: block; }
     -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
 }
 .hero p {
-    font-size: 1.1rem; color: #a0a0b0; max-width: 580px; margin: 0 auto 2.5rem; line-height: 1.7;
+    font-size: 1.1rem; color: #b8b8cc; max-width: 580px; margin: 0 auto 2.5rem; line-height: 1.7;
 }
 .hero-ctas { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
 .hero-stats {
@@ -103,7 +103,7 @@ body { display: block; }
     background: linear-gradient(135deg, #6c63ff, #00d4ff);
     -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
 }
-.hero-stat span { font-size: .85rem; color: #606070; }
+.hero-stat span { font-size: .85rem; color: #8888a8; }
 
 /* ── SECTION ── */
 .lp-section { padding: 6rem 5%; }
@@ -113,7 +113,7 @@ body { display: block; }
     text-transform: uppercase; color: #6c63ff; margin-bottom: .75rem;
 }
 .section-title { font-size: clamp(1.75rem, 4vw, 2.5rem); font-weight: 800; margin-bottom: 1rem; }
-.section-sub { color: #a0a0b0; max-width: 580px; line-height: 1.7; margin-bottom: 3rem; }
+.section-sub { color: #b8b8cc; max-width: 580px; line-height: 1.7; margin-bottom: 3rem; }
 .section-center { text-align: center; }
 .section-center .section-sub { margin: 0 auto 3rem; }
 
@@ -132,7 +132,7 @@ body { display: block; }
 .feature-card:hover::before { opacity: 1; }
 .feature-icon { font-size: 2.5rem; margin-bottom: 1rem; }
 .feature-card h3 { font-size: 1.1rem; font-weight: 700; margin-bottom: .5rem; }
-.feature-card p { color: #a0a0b0; font-size: .9rem; line-height: 1.6; }
+.feature-card p { color: #b8b8cc; font-size: .9rem; line-height: 1.6; }
 
 /* ── HOW IT WORKS ── */
 .steps-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 2rem; }
@@ -145,7 +145,7 @@ body { display: block; }
     box-shadow: 0 0 30px rgba(108,99,255,.4);
 }
 .step h3 { font-size: 1rem; font-weight: 700; margin-bottom: .4rem; }
-.step p { color: #a0a0b0; font-size: .88rem; line-height: 1.6; }
+.step p { color: #b8b8cc; font-size: .88rem; line-height: 1.6; }
 
 /* ── PRICING ── */
 .pricing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.5rem; max-width: 1100px; margin: 0 auto; }
@@ -168,21 +168,21 @@ body { display: block; }
 .pricing-period { font-size: .75rem; text-transform: uppercase; letter-spacing: .08em; color: #6c63ff; font-weight: 700; margin-bottom: .75rem; }
 .pricing-name { font-size: 1.25rem; font-weight: 800; margin-bottom: .25rem; }
 .pricing-credits { font-size: 2.5rem; font-weight: 900; color: #6c63ff; line-height: 1; }
-.pricing-credits-label { font-size: .8rem; color: #606070; margin-bottom: .75rem; }
+.pricing-credits-label { font-size: .8rem; color: #8888a8; margin-bottom: .75rem; }
 .pricing-price { font-size: 1.8rem; font-weight: 800; margin-bottom: 1.5rem; }
-.pricing-price small { font-size: .9rem; font-weight: 400; color: #a0a0b0; }
+.pricing-price small { font-size: .9rem; font-weight: 400; color: #b8b8cc; }
 .pricing-features { list-style: none; margin-bottom: 1.75rem; }
 .pricing-features li { display: flex; align-items: center; gap: .6rem; padding: .4rem 0; font-size: .9rem; color: #c0c0d0; border-bottom: 1px solid rgba(255,255,255,.04); }
 .pricing-features li:last-child { border: none; }
 .pricing-features .check { color: #00ff88; }
-.pricing-unit { font-size: .8rem; color: #a0a0b0; text-align: center; margin-top: .5rem; }
+.pricing-unit { font-size: .8rem; color: #b8b8cc; text-align: center; margin-top: .5rem; }
 
 /* ── SMS CALC ── */
 .sms-calc-section { background: rgba(108,99,255,.06); border: 1px solid rgba(108,99,255,.15); border-radius: 24px; padding: 2.5rem; max-width: 760px; margin: 0 auto; }
 .calc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1rem; margin-top: 1.5rem; }
 .calc-item { background: rgba(255,255,255,.04); border-radius: 12px; padding: .9rem 1.2rem; text-align: center; }
 .calc-item strong { display: block; font-size: 1.25rem; color: #6c63ff; font-weight: 800; }
-.calc-item small { font-size: .78rem; color: #606070; }
+.calc-item small { font-size: .78rem; color: #8888a8; }
 
 /* ── TESTIMONIALS / TRUST ── */
 .trust-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.5rem; }
@@ -190,11 +190,11 @@ body { display: block; }
     background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08);
     border-radius: 20px; padding: 1.75rem;
 }
-.trust-card p { color: #a0a0b0; font-size: .9rem; line-height: 1.7; margin-bottom: 1rem; font-style: italic; }
+.trust-card p { color: #b8b8cc; font-size: .9rem; line-height: 1.7; margin-bottom: 1rem; font-style: italic; }
 .trust-author { display: flex; align-items: center; gap: .75rem; }
 .trust-avatar { width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, #6c63ff, #00d4ff); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: .9rem; }
 .trust-name { font-weight: 700; font-size: .9rem; }
-.trust-role { font-size: .78rem; color: #606070; }
+.trust-role { font-size: .78rem; color: #8888a8; }
 
 /* ── CTA SECTION ── */
 .cta-section {
@@ -202,7 +202,7 @@ body { display: block; }
     background: radial-gradient(ellipse 80% 60% at 50% 50%, rgba(108,99,255,.15) 0%, transparent 70%);
 }
 .cta-section h2 { font-size: clamp(1.75rem, 4vw, 2.75rem); font-weight: 900; margin-bottom: 1rem; }
-.cta-section p { color: #a0a0b0; margin-bottom: 2.5rem; font-size: 1rem; }
+.cta-section p { color: #b8b8cc; margin-bottom: 2.5rem; font-size: 1rem; }
 .cta-btns { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
 
 /* ── FOOTER ── */
@@ -218,14 +218,14 @@ body { display: block; }
     -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
     display: block; margin-bottom: .5rem;
 }
-.lp-footer-brand p { color: #606070; font-size: .85rem; line-height: 1.7; }
-.lp-footer h4 { font-size: .85rem; font-weight: 700; color: #a0a0b0; margin-bottom: 1rem; letter-spacing: .05em; text-transform: uppercase; }
+.lp-footer-brand p { color: #8888a8; font-size: .85rem; line-height: 1.7; }
+.lp-footer h4 { font-size: .85rem; font-weight: 700; color: #b8b8cc; margin-bottom: 1rem; letter-spacing: .05em; text-transform: uppercase; }
 .lp-footer ul { list-style: none; }
 .lp-footer ul li { margin-bottom: .5rem; }
-.lp-footer ul li a { color: #606070; font-size: .85rem; transition: color .2s; }
+.lp-footer ul li a { color: #8888a8; font-size: .85rem; transition: color .2s; }
 .lp-footer ul li a:hover { color: #a78bfa; }
 .lp-footer-bottom { border-top: 1px solid rgba(255,255,255,.05); padding-top: 1.5rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; }
-.lp-footer-bottom p { color: #606070; font-size: .82rem; }
+.lp-footer-bottom p { color: #8888a8; font-size: .82rem; }
 
 /* ── BUTTONS (landing overrides) ── */
 .btn-lg { padding: .875rem 2.25rem; font-size: 1rem; border-radius: 50px; }
@@ -387,7 +387,7 @@ body { display: block; }
                 <span style="font-size:1.5rem">💰</span>
                 <h3 style="margin:0;font-size:1.25rem">Current price: <span style="color:#6c63ff"><?= $currSym ?><?= number_format($smsUnitPrice, 2) ?>/page</span></h3>
             </div>
-            <p style="color:#a0a0b0;font-size:.88rem;margin-bottom:0">Per-recipient, per-page charge</p>
+            <p style="color:#b8b8cc;font-size:.88rem;margin-bottom:0">Per-recipient, per-page charge</p>
             <div class="calc-grid">
                 <div class="calc-item">
                     <strong><?= $currSym ?><?= number_format($smsUnitPrice, 2) ?></strong>
@@ -406,7 +406,7 @@ body { display: block; }
                     <small>4 pages (460–612 chars)</small>
                 </div>
             </div>
-            <p style="color:#606070;font-size:.8rem;margin-top:1.25rem">
+            <p style="color:#8888a8;font-size:.8rem;margin-top:1.25rem">
                 After 160 chars, each additional page = 153 characters. Pages × recipients × <?= $currSym ?><?= number_format($smsUnitPrice, 2) ?> = total debit.
             </p>
         </div>
@@ -423,7 +423,7 @@ body { display: block; }
         </div>
 
         <?php if (empty($packages)): ?>
-        <div style="text-align:center;padding:3rem;color:#606070">
+        <div style="text-align:center;padding:3rem;color:#8888a8">
             <p style="font-size:1.1rem">Contact us for custom pricing tailored to your volume.</p>
             <a href="/register.php" class="btn btn-primary btn-lg" style="margin-top:1.5rem;display:inline-block">Get a Quote</a>
         </div>
@@ -481,7 +481,7 @@ body { display: block; }
         </div>
 
         <?php if (empty($emailPlans)): ?>
-        <div style="text-align:center;padding:3rem;color:#606070">
+        <div style="text-align:center;padding:3rem;color:#8888a8">
             <p style="font-size:1.1rem">Contact us for custom email plan pricing.</p>
             <a href="/register.php" class="btn btn-primary btn-lg" style="margin-top:1.5rem;display:inline-block">Get a Quote</a>
         </div>
@@ -503,7 +503,7 @@ body { display: block; }
                     <small>/month</small>
                 </div>
                 <?php if (!empty($ep['description'])): ?>
-                <p style="color:#a0a0b0;font-size:.85rem;margin-bottom:.75rem;line-height:1.5"><?= htmlspecialchars($ep['description']) ?></p>
+                <p style="color:#b8b8cc;font-size:.85rem;margin-bottom:.75rem;line-height:1.5"><?= htmlspecialchars($ep['description']) ?></p>
                 <?php endif; ?>
                 <ul class="pricing-features">
                     <li><span class="check" style="color:#10b981">✓</span><?= number_format((int)$ep['monthly_email_limit']) ?> emails/month</li>
@@ -603,7 +603,7 @@ body { display: block; }
     </div>
     <div class="lp-footer-bottom">
         <p>© <?= date('Y') ?> <?= htmlspecialchars($appName) ?>. All rights reserved.</p>
-        <p style="color:#404050">Powered by PhilmoreHost</p>
+        <p style="color:#8888a8">Powered by PhilmoreHost</p>
     </div>
 </footer>
 
