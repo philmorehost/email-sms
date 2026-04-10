@@ -108,6 +108,7 @@ try {
 
 $pageTitle  = 'My Dashboard';
 $activePage = 'dashboard';
+$currSym    = currencySymbol();
 require_once __DIR__ . '/../includes/layout_header.php';
 ?>
 <style>
@@ -125,7 +126,7 @@ require_once __DIR__ . '/../includes/layout_header.php';
     overflow: hidden;
 }
 .wallet-banner::after {
-    content: '₦';
+    content: '<?= addslashes($currSym) ?>';
     position: absolute;
     right: 1rem;
     top: 50%;
@@ -169,10 +170,10 @@ require_once __DIR__ . '/../includes/layout_header.php';
     <div class="wallet-banner">
         <div class="wallet-info">
             <span>📱 SMS Wallet Balance</span>
-            <strong>₦<?= number_format($walletBalance, 2) ?></strong>
+            <strong><?= htmlspecialchars($currSym) ?><?= number_format($walletBalance, 2) ?></strong>
             <?php $smsPages = ($smsUnitPrice > 0) ? (int)floor($walletBalance / $smsUnitPrice) : 0; ?>
-            <small style="opacity:.7;font-size:.8rem">≈ <?= number_format($smsPages) ?> pages · ₦<?= number_format($smsUnitPrice, 2) ?>/page</small>
-            <small style="opacity:.6;font-size:.75rem;display:block;margin-top:.15rem">This month: <?= number_format($smsPagesThisMonth) ?> pages used (₦<?= number_format($smsMonthlyDebit, 2) ?>)</small>
+            <small style="opacity:.7;font-size:.8rem">≈ <?= number_format($smsPages) ?> pages · <?= htmlspecialchars($currSym) ?><?= number_format($smsUnitPrice, 2) ?>/page</small>
+            <small style="opacity:.6;font-size:.75rem;display:block;margin-top:.15rem">This month: <?= number_format($smsPagesThisMonth) ?> pages used (<?= htmlspecialchars($currSym) ?><?= number_format($smsMonthlyDebit, 2) ?>)</small>
         </div>
         <div class="wallet-ctas">
             <a href="/billing.php" class="primary">+ Buy Credits</a>
@@ -282,8 +283,8 @@ require_once __DIR__ . '/../includes/layout_header.php';
                 </div>
             </div>
             <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border-color,rgba(255,255,255,.1));font-size:.85rem;color:var(--text-muted)">
-                Wallet: <strong>₦<?= number_format($walletBalance, 2) ?></strong>
-                &nbsp;·&nbsp; ₦<?= number_format($smsUnitPrice, 2) ?>/page
+                Wallet: <strong><?= htmlspecialchars($currSym) ?><?= number_format($walletBalance, 2) ?></strong>
+                &nbsp;·&nbsp; <?= htmlspecialchars($currSym) ?><?= number_format($smsUnitPrice, 2) ?>/page
                 &nbsp;·&nbsp; <a href="/billing.php">Buy more</a>
             </div>
         </div>
@@ -369,7 +370,7 @@ require_once __DIR__ . '/../includes/layout_header.php';
                     <?php endif; ?>
                 </td>
                 <td style="color:<?= $tx['type'] === 'credit' ? 'var(--success)' : 'var(--danger)' ?>;font-weight:600">
-                    <?= $tx['type'] === 'credit' ? '+' : '−' ?>₦<?= number_format((float)$tx['amount'], 2) ?>
+                    <?= $tx['type'] === 'credit' ? '+' : '−' ?><?= htmlspecialchars($currSym) ?><?= number_format((float)$tx['amount'], 2) ?>
                 </td>
                 <td><?= htmlspecialchars($tx['description'] ?? '') ?></td>
                 <td><?= timeAgo($tx['created_at']) ?></td>
@@ -394,7 +395,7 @@ require_once __DIR__ . '/../includes/layout_header.php';
             <div style="background:rgba(108,99,255,.08);border:1px solid rgba(108,99,255,.2);border-radius:12px;padding:1rem;text-align:center">
                 <strong style="display:block;font-size:1.25rem;color:#6c63ff"><?= $pages ?> page<?= $pages > 1 ? 's' : '' ?></strong>
                 <span style="font-size:.8rem;color:#a0a0b0"><?= $chars_min ?>–<?= $chars_max ?> chars</span>
-                <strong style="display:block;margin-top:.25rem">₦<?= number_format($smsUnitPrice * $pages, 2) ?>/recipient</strong>
+                <strong style="display:block;margin-top:.25rem"><?= htmlspecialchars($currSym) ?><?= number_format($smsUnitPrice * $pages, 2) ?>/recipient</strong>
             </div>
             <?php endfor; ?>
         </div>

@@ -288,6 +288,7 @@ try {
 
 $pageTitle  = 'Plans & Packages';
 $activePage = 'plans';
+$currSym    = currencySymbol();
 require_once __DIR__ . '/../includes/layout_header.php';
 ?>
 <style>
@@ -431,7 +432,7 @@ require_once __DIR__ . '/../includes/layout_header.php';
                         <input type="number" name="credits" class="form-control" min="1" value="1000">
                     </div>
                     <div class="form-group">
-                        <label>Price (₦)</label>
+                        <label>Price (<?= htmlspecialchars($currSym) ?>)</label>
                         <input type="number" name="price" class="form-control" step="0.01" min="0" value="500.00">
                     </div>
                     <div class="form-group">
@@ -463,7 +464,7 @@ require_once __DIR__ . '/../includes/layout_header.php';
             <td><?= (int)$pkg['id'] ?></td>
             <td><strong><?= htmlspecialchars($pkg['name']) ?></strong></td>
             <td><?= number_format((int)$pkg['credits']) ?></td>
-            <td>₦<?= number_format((float)$pkg['price'], 2) ?></td>
+            <td><?= htmlspecialchars($currSym) ?><?= number_format((float)$pkg['price'], 2) ?></td>
             <td><span class="badge badge-warning" style="font-size:.75rem"><?= htmlspecialchars($billingLabels[$pkg['billing_period'] ?? 'one_time'] ?? 'One-Time') ?></span></td>
             <td><span class="badge badge-<?= (int)$pkg['purchase_count'] > 0 ? 'success' : 'warning' ?>"><?= (int)$pkg['purchase_count'] ?></span></td>
             <td><?= $pkg['is_active'] ? '<span class="badge badge-success">Active</span>' : '<span class="badge badge-danger">Inactive</span>' ?></td>
@@ -560,7 +561,7 @@ require_once __DIR__ . '/../includes/layout_header.php';
                     <input type="number" name="credits" id="epkg_credits" class="form-control" min="1">
                 </div>
                 <div class="form-group">
-                    <label>Price (₦)</label>
+                    <label>Price (<?= htmlspecialchars($currSym) ?>)</label>
                     <input type="number" name="price" id="epkg_price" class="form-control" step="0.01" min="0">
                 </div>
                 <div class="form-group">
@@ -599,12 +600,12 @@ require_once __DIR__ . '/../includes/layout_header.php';
                 <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken()) ?>">
                 <input type="hidden" name="action" value="save_sms_price">
                 <div class="form-group">
-                    <label>Price Per SMS Unit/Page (₦)</label>
+                    <label>Price Per SMS Unit/Page (<?= htmlspecialchars($currSym) ?>)</label>
                     <input type="number" name="sms_price_per_unit" class="form-control"
                            step="0.01" min="0" value="<?= htmlspecialchars((string)$smsPrice) ?>"
                            style="max-width:200px">
                     <small style="color:var(--text-muted)">
-                        Example: ₦<?= number_format($smsPrice, 2) ?>/unit → 2-page SMS costs ₦<?= number_format($smsPrice * 2, 2) ?>
+                        Example: <?= htmlspecialchars($currSym) ?><?= number_format($smsPrice, 2) ?>/unit → 2-page SMS costs <?= htmlspecialchars($currSym) ?><?= number_format($smsPrice * 2, 2) ?>
                     </small>
                 </div>
                 <button type="submit" class="btn btn-primary">Save Price</button>
@@ -627,7 +628,7 @@ require_once __DIR__ . '/../includes/layout_header.php';
             <td><?= htmlspecialchars($req['username'] ?? '—') ?></td>
             <td><?= htmlspecialchars($req['package_name'] ?? '—') ?></td>
             <td><?= number_format((int)$req['credits']) ?></td>
-            <td>₦<?= number_format((float)$req['price'], 2) ?></td>
+            <td><?= htmlspecialchars($currSym) ?><?= number_format((float)$req['price'], 2) ?></td>
             <td><?= htmlspecialchars($billingLabels[$req['billing_period'] ?? 'one_time'] ?? 'One-Time') ?></td>
             <td>
                 <?php if ($req['status'] === 'pending'): ?>

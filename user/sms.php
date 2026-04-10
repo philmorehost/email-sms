@@ -74,9 +74,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $balance     = getWallet2($db, $uid);
 
                 if ($totalCost > 0 && $balance < $totalCost) {
+                    $sym = currencySymbol();
                     $msg = sprintf(
-                        'Insufficient balance. Need ₦%.2f (%d page%s × %d recipient%s × ₦%.2f). Balance: ₦%.2f. <a href="/billing.php">Buy credits</a>.',
-                        $totalCost, $pages, $pages > 1 ? 's' : '', count($phones), count($phones) > 1 ? 's' : '', $unitPrice, $balance
+                        'Insufficient balance. Need %s%.2f (%d page%s × %d recipient%s × %s%.2f). Balance: %s%.2f. <a href="/billing.php">Buy credits</a>.',
+                        $sym, $totalCost, $pages, $pages > 1 ? 's' : '', count($phones), count($phones) > 1 ? 's' : '', $sym, $unitPrice, $sym, $balance
                     );
                     $msgType = 'error';
                 } else {
@@ -108,7 +109,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     $db->prepare("UPDATE user_sms_wallet SET credits=GREATEST(0,credits-?), updated_at=NOW() WHERE user_id=?")->execute([$totalCost, $uid]);
                                     $db->prepare("INSERT INTO sms_credit_transactions (user_id, amount, type, description, reference) VALUES (?,?,'debit',?,?)")->execute([$uid, $totalCost, "Quick Send #{$cid}", "qsend_{$cid}"]);
                                 }
-                                $msg = sprintf('✅ Sent to %d recipient%s. Cost: ₦%.2f', count($phones), count($phones) > 1 ? 's' : '', $totalCost);
+                                $msg = sprintf('✅ Sent to %d recipient%s. Cost: %s%.2f', count($phones), count($phones) > 1 ? 's' : '', currencySymbol(), $totalCost);
                             } else {
                                 $db->prepare("UPDATE sms_campaigns SET status='failed', failed_count=? WHERE id=?")->execute([count($phones), $cid]);
                                 $msg = 'Failed: ' . ($result['message'] ?? 'Unknown error'); $msgType = 'error';
@@ -127,6 +128,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // ── Page data ─────────────────────────────────────────────────────────────────
 $walletBalance = getWallet2($db, $uid);
 $smsUnitPrice  = getSmsPrice2($db);
+$currSym       = currencySymbol();
 
 $senderIds = [];
 try {
@@ -162,7 +164,7 @@ require_once __DIR__ . '/../includes/layout_header.php';
     </div>
     <div style="text-align:right">
         <div style="font-size:.8rem;color:var(--text-muted)">Wallet Balance</div>
-        <div style="font-size:1.5rem;font-weight:800;color:var(--accent)">₦<?= number_format($walletBalance, 2) ?></div>
+        <div style="font-size:1.5rem;font-weight:800;color:var(--accent)"><?= htmlspecialchars($currSym) ?><?= number_format($walletBalance, 2) ?></div>
         <a href="/billing.php" style="font-size:.78rem;color:#6c63ff">+ Top Up</a>
     </div>
 </div>
@@ -218,7 +220,7 @@ require_once __DIR__ . '/../includes/layout_header.php';
                 <div class="char-counter">
                     <span id="charCount">0</span> characters ·
                     <span class="pages-badge" id="pagesBadge">1 page</span> ·
-                    <span id="costPreview" style="color:var(--accent)">₦<?= number_format($smsUnitPrice, 2) ?>/recipient</span>
+                    <span id="costPreview" style="color:var(--accent)"><?= htmlspecialchars($currSym) ?><?= number_format($smsUnitPrice, 2) ?>/recipient</span>
                 </div>
             </div>
 
@@ -241,7 +243,7 @@ require_once __DIR__ . '/../includes/layout_header.php';
         <div class="card-header"><h3>💰 SMS Pricing</h3></div>
         <div class="card-body">
             <p style="color:var(--text-muted);font-size:.9rem;margin-bottom:1rem">
-                Current price: <strong style="color:var(--accent)">₦<?= number_format($smsUnitPrice, 2) ?>/page/recipient</strong>
+                Current price: <strong style="color:var(--accent)"><?= htmlspecialchars($currSym) ?><?= number_format($smsUnitPrice, 2) ?>/page/recipient</strong>
             </p>
             <div style="display:grid;gap:.5rem">
                 <?php for ($p = 1; $p <= 4; $p++):
@@ -250,12 +252,12 @@ require_once __DIR__ . '/../includes/layout_header.php';
                 ?>
                 <div style="display:flex;justify-content:space-between;align-items:center;padding:.6rem .9rem;background:rgba(255,255,255,.03);border-radius:8px;font-size:.88rem">
                     <span style="color:var(--text-muted)"><?= $cmin ?>–<?= $cmax ?> chars (<?= $p ?> page<?= $p>1?'s':'' ?>)</span>
-                    <strong style="color:var(--accent)">₦<?= number_format($smsUnitPrice * $p, 2) ?>/recipient</strong>
+                    <strong style="color:var(--accent)"><?= htmlspecialchars($currSym) ?><?= number_format($smsUnitPrice * $p, 2) ?>/recipient</strong>
                 </div>
                 <?php endfor; ?>
             </div>
             <p style="font-size:.78rem;color:var(--text-muted);margin-top:.75rem">
-                After 160 chars, each page = 153 chars. Debit = pages × recipients × ₦<?= number_format($smsUnitPrice, 2) ?>.
+                After 160 chars, each page = 153 chars. Debit = pages × recipients × <?= htmlspecialchars($currSym) ?><?= number_format($smsUnitPrice, 2) ?>.
             </p>
         </div>
     </div>
@@ -295,6 +297,7 @@ require_once __DIR__ . '/../includes/layout_header.php';
     const costSum  = document.getElementById('costSummary');
     const costDet  = document.getElementById('costDetail');
     const unitPrice= <?= $smsUnitPrice ?>;
+    const currSym  = <?= json_encode($currSym) ?>;
 
     function pages(len) {
         if (len <= 0)   return 0;
@@ -312,11 +315,11 @@ require_once __DIR__ . '/../includes/layout_header.php';
 
         charCnt.textContent  = len;
         pageBadge.textContent= pg + ' page' + (pg!==1?'s':'');
-        costPrev.textContent = '₦' + (pg * unitPrice).toFixed(2) + '/recipient';
+        costPrev.textContent = currSym + (pg * unitPrice).toFixed(2) + '/recipient';
 
         if (recs > 0 && pg > 0) {
             costSum.style.display = 'block';
-            costDet.textContent   = pg + ' page' + (pg!==1?'s':'') + ' × ' + recs + ' recipient' + (recs!==1?'s':'') + ' × ₦' + unitPrice.toFixed(2) + ' = ₦' + cost.toFixed(2);
+            costDet.textContent   = pg + ' page' + (pg!==1?'s':'') + ' × ' + recs + ' recipient' + (recs!==1?'s':'') + ' × ' + currSym + unitPrice.toFixed(2) + ' = ' + currSym + cost.toFixed(2);
         } else {
             costSum.style.display = 'none';
         }

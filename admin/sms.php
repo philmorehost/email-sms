@@ -178,13 +178,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                             if ($totalCost > 0 && $userBalance < $totalCost) {
                                 $db->prepare("UPDATE sms_campaigns SET status='failed' WHERE id=?")->execute([$campaignId]);
+                                $sym     = currencySymbol();
                                 $msg     = sprintf(
-                                    'Insufficient wallet balance. This campaign requires ₦%.2f (%d page%s × %d recipient%s × ₦%.2f). Your balance: ₦%.2f. Please top up your credits.',
-                                    $totalCost,
+                                    'Insufficient wallet balance. This campaign requires %s%.2f (%d page%s × %d recipient%s × %s%.2f). Your balance: %s%.2f. Please top up your credits.',
+                                    $sym, $totalCost,
                                     $msgPages, $msgPages !== 1 ? 's' : '',
                                     $totalRecipients, $totalRecipients !== 1 ? 's' : '',
-                                    $unitPrice,
-                                    $userBalance
+                                    $sym, $unitPrice,
+                                    $sym, $userBalance
                                 );
                                 $msgType = 'error';
                             } else {
@@ -326,9 +327,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                             if ($totalCost2 > 0 && $userBalance2 < $totalCost2) {
                                 $db->prepare("UPDATE sms_campaigns SET status='failed', failed_count=?, sent_at=NOW() WHERE id=?")->execute([$total, $id]);
+                                $sym2    = currencySymbol();
                                 $msg     = sprintf(
-                                    'Insufficient balance. Need ₦%.2f, available ₦%.2f. Top up your credits first.',
-                                    $totalCost2, $userBalance2
+                                    'Insufficient balance. Need %s%.2f, available %s%.2f. Top up your credits first.',
+                                    $sym2, $totalCost2, $sym2, $userBalance2
                                 );
                                 $msgType = 'error';
                             } else {
