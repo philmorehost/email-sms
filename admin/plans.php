@@ -337,7 +337,7 @@ require_once __DIR__ . '/../includes/layout_header.php';
                         <input type="text" name="name" class="form-control" required>
                     </div>
                     <div class="form-group">
-                        <label>Price ($/mo)</label>
+                        <label>Price (<?= htmlspecialchars($currSym) ?>/mo)</label>
                         <input type="number" name="price" class="form-control" step="0.01" min="0" value="0.00">
                     </div>
                     <div class="form-group">
@@ -376,7 +376,7 @@ require_once __DIR__ . '/../includes/layout_header.php';
                 <br><small style="color:var(--text-muted)"><?= htmlspecialchars(substr($p['description'], 0, 60)) ?></small>
                 <?php endif; ?>
             </td>
-            <td>$<?= number_format((float)$p['price'], 2) ?>/mo</td>
+            <td><?= htmlspecialchars($currSym) ?><?= number_format((float)$p['price'], 2) ?>/mo</td>
             <td><?= number_format((int)$p['monthly_email_limit']) ?></td>
             <td><span class="badge badge-<?= (int)$p['subscriber_count'] > 0 ? 'success' : 'warning' ?>"><?= (int)$p['subscriber_count'] ?></span></td>
             <td><?= $p['is_active'] ? '<span class="badge badge-success">Active</span>' : '<span class="badge badge-danger">Inactive</span>' ?></td>
@@ -515,7 +515,7 @@ require_once __DIR__ . '/../includes/layout_header.php';
                     <input type="text" name="name" id="ep_name" class="form-control" required>
                 </div>
                 <div class="form-group">
-                    <label>Price ($/mo)</label>
+                    <label>Price (<?= htmlspecialchars($currSym) ?>/mo)</label>
                     <input type="number" name="price" id="ep_price" class="form-control" step="0.01" min="0">
                 </div>
                 <div class="form-group">
