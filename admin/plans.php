@@ -7,9 +7,77 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/security.php';
 
 setSecurityHeaders();
-requireAuth();
+requireAdmin();
 $db   = getDB();
 $user = getCurrentUser();
+
+// ── Table migrations — create if not present on older installs ────────────────
+try {
+    $db->exec("CREATE TABLE IF NOT EXISTS email_plans (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(100) NOT NULL,
+        description TEXT,
+        price DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+        monthly_email_limit INT NOT NULL DEFAULT 1000,
+        features JSON,
+        is_active BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )");
+    $db->exec("CREATE TABLE IF NOT EXISTS user_subscriptions (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        plan_id INT NOT NULL,
+        status ENUM('active','cancelled','expired') DEFAULT 'active',
+        emails_used INT DEFAULT 0,
+        started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        expires_at TIMESTAMP NULL,
+        UNIQUE KEY unique_user_sub (user_id)
+    )");
+    $db->exec("CREATE TABLE IF NOT EXISTS sms_credit_packages (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(100) NOT NULL,
+        credits INT NOT NULL,
+        price DECIMAL(10,2) NOT NULL,
+        billing_period ENUM('one_time','monthly','quarterly','yearly') NOT NULL DEFAULT 'one_time',
+        is_active BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )");
+    $db->exec("CREATE TABLE IF NOT EXISTS user_sms_wallet (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL UNIQUE,
+        credits DECIMAL(12,2) DEFAULT 0.00,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )");
+    $db->exec("CREATE TABLE IF NOT EXISTS sms_credit_transactions (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        amount DECIMAL(12,2) NOT NULL,
+        type ENUM('credit','debit') NOT NULL,
+        description VARCHAR(255),
+        reference VARCHAR(100),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_user_tx (user_id)
+    )");
+    $db->exec("CREATE TABLE IF NOT EXISTS sms_purchase_requests (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        package_id INT NOT NULL,
+        status ENUM('pending','approved','rejected') DEFAULT 'pending',
+        notes VARCHAR(255),
+        requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        processed_at TIMESTAMP NULL,
+        processed_by INT NULL,
+        INDEX idx_user_req (user_id),
+        INDEX idx_status_req (status)
+    )");
+    // Add billing_period column to sms_credit_packages if missing (existing installs)
+    $cols = $db->query("SHOW COLUMNS FROM sms_credit_packages LIKE 'billing_period'")->fetchAll();
+    if (empty($cols)) {
+        $db->exec("ALTER TABLE sms_credit_packages ADD COLUMN billing_period ENUM('one_time','monthly','quarterly','yearly') NOT NULL DEFAULT 'one_time' AFTER price");
+    }
+    // Ensure sms_price_per_unit app setting exists
+    $db->exec("INSERT IGNORE INTO app_settings (setting_key, setting_value) VALUES ('sms_price_per_unit', '6.50')");
+} catch (\Exception $e) { error_log('plans.php migration: ' . $e->getMessage()); }
 
 function setFlash(string $msg, string $type = 'success'): void {
     if (session_status() === PHP_SESSION_NONE) session_start();
@@ -185,41 +253,20 @@ $activeTab = $_GET['tab'] ?? 'email_plans';
 
 $plans = [];
 try {
-    $plans = $db->query('SELECT * FROM email_plans ORDER BY created_at DESC')->fetchAll();
+    $plans = $db->query(
+        'SELECT ep.*,
+         (SELECT COUNT(*) FROM user_subscriptions us WHERE us.plan_id = ep.id AND us.status = \'active\') AS subscriber_count
+         FROM email_plans ep ORDER BY ep.created_at DESC'
+    )->fetchAll();
 } catch (\Exception $e) {}
 
 $packages = [];
 try {
-    $packages = $db->query('SELECT * FROM sms_credit_packages ORDER BY created_at DESC')->fetchAll();
-} catch (\Exception $e) {}
-
-// Migration: ensure billing_period column exists for existing installs
-try {
-    $cols = $db->query("SHOW COLUMNS FROM sms_credit_packages LIKE 'billing_period'")->fetchAll();
-    if (empty($cols)) {
-        $db->exec("ALTER TABLE sms_credit_packages ADD COLUMN billing_period ENUM('one_time','monthly','quarterly','yearly') NOT NULL DEFAULT 'one_time' AFTER price");
-    }
-} catch (\Exception $e) {}
-
-// Migration: ensure sms_purchase_requests table exists
-try {
-    $db->exec("CREATE TABLE IF NOT EXISTS sms_purchase_requests (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        user_id INT NOT NULL,
-        package_id INT NOT NULL,
-        status ENUM('pending','approved','rejected') DEFAULT 'pending',
-        notes VARCHAR(255),
-        requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        processed_at TIMESTAMP NULL,
-        processed_by INT NULL,
-        INDEX idx_user_req (user_id),
-        INDEX idx_status_req (status)
-    )");
-} catch (\Exception $e) {}
-
-// Migration: ensure sms_price_per_unit setting exists
-try {
-    $db->exec("INSERT IGNORE INTO app_settings (setting_key, setting_value) VALUES ('sms_price_per_unit', '6.50')");
+    $packages = $db->query(
+        'SELECT p.*,
+         (SELECT COUNT(*) FROM sms_purchase_requests r WHERE r.package_id = p.id AND r.status = \'approved\') AS purchase_count
+         FROM sms_credit_packages p ORDER BY p.created_at DESC'
+    )->fetchAll();
 } catch (\Exception $e) {}
 
 $smsPrice = 6.50;
@@ -316,18 +363,23 @@ require_once __DIR__ . '/../includes/layout_header.php';
 
     <div class="table-responsive">
     <table class="table">
-        <thead><tr><th>ID</th><th>Name</th><th>Description</th><th>Price</th><th>Email Limit</th><th>Active</th><th>Created</th><th>Actions</th></tr></thead>
+        <thead><tr><th>ID</th><th>Name</th><th>Price</th><th>Email Limit/mo</th><th>Subscribers</th><th>Active</th><th>Created</th><th>Actions</th></tr></thead>
         <tbody>
         <?php foreach ($plans as $p): ?>
         <?php $featuresArr = json_decode($p['features'] ?? '[]', true) ?: []; ?>
         <tr>
             <td><?= (int)$p['id'] ?></td>
-            <td><?= htmlspecialchars($p['name']) ?></td>
-            <td><?= htmlspecialchars($p['description'] ?? '') ?></td>
-            <td>$<?= number_format((float)$p['price'], 2) ?></td>
+            <td>
+                <strong><?= htmlspecialchars($p['name']) ?></strong>
+                <?php if (!empty($p['description'])): ?>
+                <br><small style="color:var(--text-muted)"><?= htmlspecialchars(substr($p['description'], 0, 60)) ?></small>
+                <?php endif; ?>
+            </td>
+            <td>$<?= number_format((float)$p['price'], 2) ?>/mo</td>
             <td><?= number_format((int)$p['monthly_email_limit']) ?></td>
-            <td><?= $p['is_active'] ? '<span class="badge badge-success">Yes</span>' : '<span class="badge badge-danger">No</span>' ?></td>
-            <td><?= htmlspecialchars($p['created_at']) ?></td>
+            <td><span class="badge badge-<?= (int)$p['subscriber_count'] > 0 ? 'success' : 'warning' ?>"><?= (int)$p['subscriber_count'] ?></span></td>
+            <td><?= $p['is_active'] ? '<span class="badge badge-success">Active</span>' : '<span class="badge badge-danger">Inactive</span>' ?></td>
+            <td style="font-size:.8rem"><?= htmlspecialchars(substr($p['created_at'], 0, 10)) ?></td>
             <td>
                 <button class="btn btn-sm btn-secondary" onclick="openEditPlanModal(
                     <?= (int)$p['id'] ?>,
@@ -354,7 +406,7 @@ require_once __DIR__ . '/../includes/layout_header.php';
         </tr>
         <?php endforeach; ?>
         <?php if (empty($plans)): ?>
-        <tr><td colspan="8" style="text-align:center;color:var(--text-muted)">No plans yet.</td></tr>
+        <tr><td colspan="8" style="text-align:center;color:var(--text-muted)">No email plans yet. Use the form above to add your first plan.</td></tr>
         <?php endif; ?>
         </tbody>
     </table>
@@ -403,18 +455,19 @@ require_once __DIR__ . '/../includes/layout_header.php';
 
     <div class="table-responsive">
     <table class="table">
-        <thead><tr><th>ID</th><th>Name</th><th>Credits</th><th>Price</th><th>Billing</th><th>Active</th><th>Created</th><th>Actions</th></tr></thead>
+        <thead><tr><th>ID</th><th>Name</th><th>Credits</th><th>Price</th><th>Billing</th><th>Purchases</th><th>Active</th><th>Created</th><th>Actions</th></tr></thead>
         <tbody>
         <?php foreach ($packages as $pkg): ?>
         <?php $billingLabels = ['one_time'=>'One-Time','monthly'=>'Monthly','quarterly'=>'Quarterly','yearly'=>'Yearly']; ?>
         <tr>
             <td><?= (int)$pkg['id'] ?></td>
-            <td><?= htmlspecialchars($pkg['name']) ?></td>
+            <td><strong><?= htmlspecialchars($pkg['name']) ?></strong></td>
             <td><?= number_format((int)$pkg['credits']) ?></td>
             <td>₦<?= number_format((float)$pkg['price'], 2) ?></td>
-            <td><?= htmlspecialchars($billingLabels[$pkg['billing_period'] ?? 'one_time'] ?? 'One-Time') ?></td>
-            <td><?= $pkg['is_active'] ? '<span class="badge badge-success">Yes</span>' : '<span class="badge badge-danger">No</span>' ?></td>
-            <td><?= htmlspecialchars($pkg['created_at']) ?></td>
+            <td><span class="badge badge-warning" style="font-size:.75rem"><?= htmlspecialchars($billingLabels[$pkg['billing_period'] ?? 'one_time'] ?? 'One-Time') ?></span></td>
+            <td><span class="badge badge-<?= (int)$pkg['purchase_count'] > 0 ? 'success' : 'warning' ?>"><?= (int)$pkg['purchase_count'] ?></span></td>
+            <td><?= $pkg['is_active'] ? '<span class="badge badge-success">Active</span>' : '<span class="badge badge-danger">Inactive</span>' ?></td>
+            <td style="font-size:.8rem"><?= htmlspecialchars(substr($pkg['created_at'], 0, 10)) ?></td>
             <td>
                 <button class="btn btn-sm btn-secondary" onclick="openEditPackageModal(
                     <?= (int)$pkg['id'] ?>,
@@ -440,7 +493,7 @@ require_once __DIR__ . '/../includes/layout_header.php';
         </tr>
         <?php endforeach; ?>
         <?php if (empty($packages)): ?>
-        <tr><td colspan="8" style="text-align:center;color:var(--text-muted)">No packages yet.</td></tr>
+        <tr><td colspan="9" style="text-align:center;color:var(--text-muted)">No packages yet. Use the form above to add your first SMS package.</td></tr>
         <?php endif; ?>
         </tbody>
     </table>
