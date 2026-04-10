@@ -74,7 +74,7 @@ function login(string $username, string $password): array {
                 // Trusted device — skip OTP
             } else {
                 sendLoginOTP($userId, $user['email']);
-                return ['success' => false, 'otp_required' => true, 'user_id' => $userId];
+                return ['success' => false, 'otp_required' => true, 'user_id' => $userId, 'email' => $user['email']];
             }
         }
 

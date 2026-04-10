@@ -77,15 +77,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($result['success']) {
                     redirect('/dashboard.php');
                 } elseif (!empty($result['otp_required'])) {
-                    $userId = (int)$result['user_id'];
-                    // Mask email for display
-                    $db   = getDB();
-                    $stmt = $db->prepare("SELECT email FROM users WHERE id = ?");
-                    $stmt->execute([$userId]);
-                    $emailRow     = $stmt->fetch();
-                    $rawEmail     = $emailRow['email'] ?? '';
-                    $atPos        = strpos($rawEmail, '@');
-                    $maskedEmail  = $atPos > 1
+                    $userId  = (int)$result['user_id'];
+                    $rawEmail = $result['email'] ?? '';
+                    $atPos    = strpos($rawEmail, '@');
+                    $maskedEmail = $atPos > 1
                         ? substr($rawEmail, 0, 1) . '***' . substr($rawEmail, $atPos)
                         : '***@***';
 
