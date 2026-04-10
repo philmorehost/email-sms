@@ -34,18 +34,34 @@ function sendCampaignEmails(\PDO $db, int $campaignId, int $groupId, string $sub
     }
     $contacts = $cStmt->fetchAll();
 
-    // Resolve hourly email limit from the creator's subscription plan
-    $emailsPerHour = 0;
+    // Resolve per-hour limit (applies to ALL email servers) and monthly limit
+    // (applies ONLY when user is on Default SMTP — no active custom user_smtp_settings).
+    $emailsPerHour    = 0;
+    $monthlyLimit     = 0;
+    $enforceMonthly   = false; // only enforced when using Default/system SMTP
+
     if ($createdBy > 0) {
         try {
             $planStmt = $db->prepare(
-                "SELECT ep.emails_per_hour FROM user_subscriptions us
+                "SELECT ep.emails_per_hour, ep.monthly_email_limit FROM user_subscriptions us
                  JOIN email_plans ep ON ep.id = us.plan_id
                  WHERE us.user_id = ? AND us.status = 'active' LIMIT 1"
             );
             $planStmt->execute([$createdBy]);
             $planRow = $planStmt->fetch();
-            if ($planRow) $emailsPerHour = (int)$planRow['emails_per_hour'];
+            if ($planRow) {
+                $emailsPerHour = (int)$planRow['emails_per_hour'];
+                $monthlyLimit  = (int)$planRow['monthly_email_limit'];
+            }
+
+            // Monthly limit only applies when the user has NO active custom SMTP config
+            // (i.e. they are using the system Default SMTP).
+            $customStmt = $db->prepare(
+                "SELECT id FROM user_smtp_settings WHERE user_id = ? AND is_active = 1 LIMIT 1"
+            );
+            $customStmt->execute([$createdBy]);
+            $hasCustomSmtp  = (bool)$customStmt->fetch();
+            $enforceMonthly = !$hasCustomSmtp && $monthlyLimit > 0;
         } catch (\Exception $e) {}
     }
 
@@ -54,14 +70,16 @@ function sendCampaignEmails(\PDO $db, int $campaignId, int $groupId, string $sub
     $mailer    = new Mailer($createdBy);
     $sentCount = 0;
     $failCount = 0;
-    $sentThisHour = 0;
-    $hourLimitReached = false;
+    $sentThisHour      = 0;
+    $emailsUsedMonth   = 0;
+    $hourLimitReached  = false;
+    $monthLimitReached = false;
 
-    // Count emails already sent in the last hour for this user
+    // Count emails already sent in the last hour for this user (all servers)
     if ($emailsPerHour > 0 && $createdBy > 0) {
         try {
             $hStmt = $db->prepare(
-                "SELECT COUNT(*) FROM email_campaigns
+                "SELECT COALESCE(SUM(sent_count),0) FROM email_campaigns
                  WHERE created_by = ? AND sent_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR)"
             );
             $hStmt->execute([$createdBy]);
@@ -69,10 +87,28 @@ function sendCampaignEmails(\PDO $db, int $campaignId, int $groupId, string $sub
         } catch (\Exception $e) {}
     }
 
+    // Count emails sent this calendar month for Default SMTP enforcement
+    if ($enforceMonthly && $createdBy > 0) {
+        try {
+            $mStmt = $db->prepare(
+                "SELECT COALESCE(SUM(sent_count),0) FROM email_campaigns
+                 WHERE created_by = ? AND sent_at >= DATE_FORMAT(NOW(),'%Y-%m-01')"
+            );
+            $mStmt->execute([$createdBy]);
+            $emailsUsedMonth = (int)$mStmt->fetchColumn();
+        } catch (\Exception $e) {}
+    }
+
     foreach ($contacts as $contact) {
-        // Enforce hourly limit
+        // Enforce hourly limit (all servers)
         if ($emailsPerHour > 0 && $sentThisHour + $sentCount >= $emailsPerHour) {
             $hourLimitReached = true;
+            $failCount += count($contacts) - $sentCount - $failCount;
+            break;
+        }
+        // Enforce monthly limit (Default SMTP only)
+        if ($enforceMonthly && $emailsUsedMonth + $sentCount >= $monthlyLimit) {
+            $monthLimitReached = true;
             $failCount += count($contacts) - $sentCount - $failCount;
             break;
         }
@@ -94,7 +130,8 @@ function sendCampaignEmails(\PDO $db, int $campaignId, int $groupId, string $sub
         }
     }
 
-    $finalStatus = $hourLimitReached ? 'failed' : (($failCount > 0 && $sentCount === 0) ? 'failed' : 'sent');
+    $limitReached = $hourLimitReached || $monthLimitReached;
+    $finalStatus  = $limitReached ? 'failed' : (($failCount > 0 && $sentCount === 0) ? 'failed' : 'sent');
     $db->prepare(
         "UPDATE email_campaigns SET status=?, sent_count=?, failed_count=?, total_recipients=?, sent_at=NOW() WHERE id=?"
     )->execute([$finalStatus, $sentCount, $failCount, count($contacts), $campaignId]);

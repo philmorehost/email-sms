@@ -33,7 +33,7 @@ $isSuperAdmin = ($user['role'] ?? '') === 'superadmin';
                 <span class="nav-icon">🏠</span><span class="nav-label">Dashboard</span>
             </a>
             <a href="/billing.php" class="nav-item <?= $activePage === 'billing' ? 'active' : '' ?>">
-                <span class="nav-icon">💳</span><span class="nav-label">SMS Credits</span>
+                <span class="nav-icon">💳</span><span class="nav-label">Billings</span>
             </a>
             <a href="/deposit.php" class="nav-item <?= $activePage === 'deposit' ? 'active' : '' ?>">
                 <span class="nav-icon">💰</span><span class="nav-label">Deposit Funds</span>

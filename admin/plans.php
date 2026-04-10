@@ -353,11 +353,11 @@ require_once __DIR__ . '/../includes/layout_header.php';
                         <input type="number" name="price" class="form-control" step="0.01" min="0" value="0.00">
                     </div>
                     <div class="form-group">
-                        <label>Monthly Email Limit</label>
+                        <label>Monthly Email Limit <small style="color:var(--text-muted)">(Default SMTP only)</small></label>
                         <input type="number" name="monthly_email_limit" class="form-control" min="0" value="1000">
                     </div>
                     <div class="form-group">
-                        <label>Emails Per Hour <small style="color:var(--text-muted)">(0 = unlimited)</small></label>
+                        <label>Emails Per Hour <small style="color:var(--text-muted)">(0 = unlimited, applies to all servers)</small></label>
                         <input type="number" name="emails_per_hour" class="form-control" min="0" value="0" placeholder="0 = no hourly limit">
                     </div>
                     <div class="form-group" style="display:flex;align-items:center;gap:.5rem;padding-top:1.5rem">
@@ -388,7 +388,7 @@ require_once __DIR__ . '/../includes/layout_header.php';
 
     <div class="table-responsive">
     <table class="table">
-        <thead><tr><th>ID</th><th>Name</th><th>Price</th><th>Email Limit/mo</th><th>Per Hour</th><th>Special</th><th>Subscribers</th><th>Active</th><th>Created</th><th>Actions</th></tr></thead>
+        <thead><tr><th>ID</th><th>Name</th><th>Price</th><th>Monthly Limit (Default SMTP)</th><th>Hourly Limit (All)</th><th>Special</th><th>Subscribers</th><th>Active</th><th>Created</th><th>Actions</th></tr></thead>
         <tbody>
         <?php foreach ($plans as $p): ?>
         <?php $featuresArr = json_decode($p['features'] ?? '[]', true) ?: []; ?>
@@ -548,11 +548,11 @@ require_once __DIR__ . '/../includes/layout_header.php';
                     <input type="number" name="price" id="ep_price" class="form-control" step="0.01" min="0">
                 </div>
                 <div class="form-group">
-                    <label>Monthly Email Limit</label>
+                    <label>Monthly Email Limit <small style="color:var(--text-muted)">(Default SMTP only)</small></label>
                     <input type="number" name="monthly_email_limit" id="ep_limit" class="form-control" min="0">
                 </div>
                 <div class="form-group">
-                    <label>Emails Per Hour <small style="color:var(--text-muted)">(0 = unlimited)</small></label>
+                    <label>Emails Per Hour <small style="color:var(--text-muted)">(0 = unlimited, applies to all servers)</small></label>
                     <input type="number" name="emails_per_hour" id="ep_per_hour" class="form-control" min="0" value="0">
                 </div>
                 <div class="form-group" style="display:flex;align-items:center;gap:.5rem;padding-top:1.5rem">

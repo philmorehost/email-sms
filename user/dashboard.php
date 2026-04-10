@@ -192,7 +192,7 @@ require_once __DIR__ . '/../includes/layout_header.php';
         <div class="wallet-info" style="flex:1">
             <span>📧 Email Plan — <?= htmlspecialchars($mySubscription['plan_name']) ?></span>
             <strong><?= number_format($emailLeft) ?></strong>
-            <small style="opacity:.7;font-size:.8rem">emails remaining this period</small>
+            <small style="opacity:.7;font-size:.8rem">emails remaining (Default SMTP)</small>
             <small style="opacity:.6;font-size:.75rem;display:block;margin-top:.15rem"><?= number_format($emailUsed) ?> / <?= number_format($emailLimit) ?> used (<?= $pct ?>%)</small>
             <div style="background:rgba(255,255,255,.25);border-radius:50px;height:6px;margin-top:.5rem;overflow:hidden">
                 <div style="background:#fff;opacity:.9;height:100%;width:<?= $pct ?>%;border-radius:50px"></div>
@@ -343,7 +343,7 @@ require_once __DIR__ . '/../includes/layout_header.php';
         <div class="card-body" style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
             <a href="/user/sms.php" class="btn btn-primary" style="text-align:center">📤 New SMS Campaign</a>
             <a href="/billing.php?tab=email_plans" class="btn btn-primary" style="text-align:center;background:linear-gradient(135deg,#10b981,#06b6d4);border:none">📧 Email Plans</a>
-            <a href="/billing.php" class="btn btn-secondary" style="text-align:center">💳 Buy SMS Credits</a>
+            <a href="/billing.php" class="btn btn-secondary" style="text-align:center">💳 Billings</a>
             <a href="/billing.php?tab=transactions" class="btn btn-secondary" style="text-align:center">📊 Transactions</a>
         </div>
     </div>

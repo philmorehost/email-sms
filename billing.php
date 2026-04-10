@@ -523,7 +523,7 @@ require_once __DIR__ . '/includes/layout_header.php';
             <!-- Usage bar -->
             <div style="margin-top:1rem">
                 <div style="display:flex;justify-content:space-between;font-size:.85rem;margin-bottom:.4rem">
-                    <span style="color:var(--text-muted)">Emails used this period</span>
+                <span style="color:var(--text-muted)">Emails used this period <small>(Default SMTP only)</small></span>
                     <strong style="color:<?= $barColor ?>"><?= number_format($emailUsed) ?> / <?= number_format($emailLimit) ?> (<?= $pct ?>%)</strong>
                 </div>
                 <div style="background:rgba(255,255,255,.08);border-radius:50px;height:10px;overflow:hidden">
@@ -579,9 +579,9 @@ require_once __DIR__ . '/includes/layout_header.php';
             </div>
             <div class="pkg-name"><?= htmlspecialchars($ep['name']) ?></div>
             <div class="pkg-credits"><?= number_format((int)$ep['monthly_email_limit']) ?></div>
-            <div class="pkg-credits-label">Emails / Month</div>
+            <div class="pkg-credits-label">Emails / Month <small style="color:var(--text-muted)">(Default SMTP)</small></div>
             <?php if ((int)($ep['emails_per_hour'] ?? 0) > 0): ?>
-            <div style="font-size:.78rem;color:var(--text-muted);margin:.2rem 0">Max <?= number_format((int)$ep['emails_per_hour']) ?> emails/hour</div>
+            <div style="font-size:.78rem;color:var(--text-muted);margin:.2rem 0">Max <?= number_format((int)$ep['emails_per_hour']) ?> emails/hour (all servers)</div>
             <?php endif; ?>
             <div class="pkg-price">
                 <?= htmlspecialchars($currSym) ?><?= number_format((float)$ep['price'], 2) ?>
