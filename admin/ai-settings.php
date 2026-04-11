@@ -46,7 +46,8 @@ try {
         ('deepseek_api_key', ''),
         ('deepseek_model', 'deepseek-chat'),
         ('ai_tokens_per_generation', '50'),
-        ('ai_tokens_per_chat_1k', '10')
+        ('ai_tokens_per_chat_1k', '10'),
+        ('ai_tokens_per_sms', '5')
     ");
 } catch (\Exception $e) { error_log('ai-settings migration: ' . $e->getMessage()); }
 
@@ -81,6 +82,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                      ? $_POST['deepseek_model'] : 'deepseek-chat';
         $perGen    = max(1, (int)($_POST['ai_tokens_per_generation'] ?? 50));
         $perChat1k = max(1, (int)($_POST['ai_tokens_per_chat_1k'] ?? 10));
+        $perSms    = max(1, (int)($_POST['ai_tokens_per_sms'] ?? 5));
 
         try {
             $uStmt = $db->prepare("INSERT INTO app_settings (setting_key, setting_value) VALUES (?,?) ON DUPLICATE KEY UPDATE setting_value=?");
@@ -89,6 +91,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'deepseek_model'            => $model,
                 'ai_tokens_per_generation'  => (string)$perGen,
                 'ai_tokens_per_chat_1k'     => (string)$perChat1k,
+                'ai_tokens_per_sms'         => (string)$perSms,
             ] as $k => $v) {
                 $uStmt->execute([$k, $v, $v]);
             }
@@ -282,6 +285,12 @@ require_once __DIR__ . '/../includes/layout_header.php';
                         <input type="number" name="ai_tokens_per_chat_1k" class="form-control" min="1" max="10000"
                                value="<?= (int)$s('ai_tokens_per_chat_1k', '10') ?>">
                         <small style="color:var(--text-muted)">Proportional deduction for chat/refinement responses.</small>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Tokens per SMS Generation</label>
+                        <input type="number" name="ai_tokens_per_sms" class="form-control" min="1" max="10000"
+                               value="<?= (int)$s('ai_tokens_per_sms', '5') ?>">
+                        <small style="color:var(--text-muted)">Deducted each time the AI writes an SMS message for a user.</small>
                     </div>
                 </div>
 

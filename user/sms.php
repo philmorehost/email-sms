@@ -188,6 +188,25 @@ try {
 
 $pageTitle  = 'Send SMS';
 $activePage = 'sms';
+
+// ── AI token balance ──────────────────────────────────────────────────────────
+$aiBalance  = 0;
+$costPerSms = 5;
+$aiEnabled  = false;
+try {
+    $db->exec("CREATE TABLE IF NOT EXISTS user_ai_tokens (
+        id INT AUTO_INCREMENT PRIMARY KEY, user_id INT NOT NULL UNIQUE,
+        balance INT NOT NULL DEFAULT 0,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )");
+    $balRow = $db->prepare("SELECT balance FROM user_ai_tokens WHERE user_id=?");
+    $balRow->execute([$uid]);
+    $aiBalance = (int)($balRow->fetchColumn() ?: 0);
+    $aiSettings = $db->query("SELECT setting_key, setting_value FROM app_settings WHERE setting_key IN ('ai_tokens_per_sms','deepseek_api_key')")->fetchAll(\PDO::FETCH_KEY_PAIR);
+    $costPerSms = max(1, (int)($aiSettings['ai_tokens_per_sms'] ?? 5));
+    $aiEnabled  = !empty(trim($aiSettings['deepseek_api_key'] ?? ''));
+} catch (\Exception $e) {}
+
 require_once __DIR__ . '/../includes/layout_header.php';
 ?>
 <style>
@@ -323,6 +342,111 @@ require_once __DIR__ . '/../includes/layout_header.php';
 </div>
 </div>
 
+<!-- ── AI SMS Writer ──────────────────────────────────────────────────────────── -->
+<?php if ($aiEnabled): ?>
+<div style="margin-top:2rem">
+<div class="card">
+    <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem">
+        <h3>🤖 AI SMS Writer</h3>
+        <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
+            <span style="background:rgba(108,99,255,.15);border:1px solid rgba(108,99,255,.3);color:#a78bfa;padding:3px 12px;border-radius:20px;font-size:.8rem;font-weight:600" id="smsAiBalance"><?= number_format($aiBalance) ?> tokens</span>
+            <a href="/billing.php?tab=ai_tokens" style="font-size:.78rem;color:#6c63ff">+ Buy tokens</a>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="dashboard-grid" style="grid-template-columns:1fr 1fr;gap:1.5rem">
+            <!-- Left: AI input -->
+            <div>
+                <div class="form-group" style="margin-bottom:1rem">
+                    <label class="form-label">📝 What should the SMS be about?</label>
+                    <textarea id="aiSmsTopic" class="form-control" rows="3"
+                        placeholder="e.g. 50% flash sale on all shoes this weekend only — shop before Sunday midnight…"></textarea>
+                </div>
+                <div class="form-group" style="margin-bottom:1rem">
+                    <label class="form-label">📏 Target Length</label>
+                    <select id="aiSmsPages" class="form-control">
+                        <option value="1">1 page — up to 160 chars (standard)</option>
+                        <option value="2" selected>2 pages — up to 306 chars (recommended)</option>
+                        <option value="3">3 pages — up to 459 chars (long)</option>
+                        <option value="4">4 pages — up to 612 chars (extended)</option>
+                    </select>
+                    <small style="color:var(--text-muted)">Price charged = pages × recipients × unit rate. Shorter = cheaper to send.</small>
+                </div>
+                <div class="form-group" style="margin-bottom:1rem">
+                    <label class="form-label">🏷️ Brand / Sender Name <span style="color:var(--text-muted)">(optional)</span></label>
+                    <input type="text" id="aiSmsBrand" class="form-control" placeholder="e.g. ShopZone, TechMart, FoodExpress" maxlength="30">
+                </div>
+                <div class="form-group" style="margin-bottom:1.25rem">
+                    <label class="form-label">🔗 Call-to-Action hint <span style="color:var(--text-muted)">(optional)</span></label>
+                    <input type="text" id="aiSmsCta" class="form-control" placeholder="e.g. Visit shopzone.com/sale | Call 0800-SHOP" maxlength="80">
+                </div>
+                <button class="btn btn-primary" id="btnAiSms" style="width:100%">
+                    <span id="aiSmsBtnText">✨ Generate SMS (<?= $costPerSms ?> token<?= $costPerSms !== 1 ? 's' : '' ?>)</span>
+                    <span id="aiSmsLoader" style="display:none">🔄 Generating…</span>
+                </button>
+                <div id="aiSmsErr" style="color:#f87171;font-size:.83rem;margin-top:.5rem;display:none"></div>
+            </div>
+            <!-- Right: Quick topic prompts -->
+            <div>
+                <label class="form-label">⚡ Quick SMS Topics</label>
+                <div style="display:flex;flex-direction:column;gap:.45rem;max-height:340px;overflow-y:auto;padding-right:.25rem" id="smsQuickTopics">
+                    <?php
+                    $smsTopics = [
+                        ['🔥 Flash Sale', 'Flash sale: 40% off everything today only. Limited stock!'],
+                        ['🎁 Free Gift', 'Exclusive free gift with every purchase this weekend.'],
+                        ['⏰ Last Chance', 'Last chance! Offer expires at midnight tonight.'],
+                        ['🆕 New Arrival', 'Exciting new arrivals are now in stock — be the first to shop!'],
+                        ['🎉 Holiday Promo', 'Celebrate the season with our special holiday discount.'],
+                        ['📦 Order Ready', 'Your order is ready for pickup/delivery — track it now.'],
+                        ['💳 Bill Reminder', 'Friendly reminder: your payment is due soon. Pay now to avoid disruption.'],
+                        ['🔔 Appointment Reminder', 'Reminder: you have an appointment scheduled. Reply to confirm or reschedule.'],
+                        ['⭐ Review Request', 'How was your experience? Leave a quick review and get 10% off your next order.'],
+                        ['👥 Referral Bonus', 'Refer a friend and earn bonus credits when they sign up!'],
+                        ['🎂 Birthday Offer', 'Happy birthday! Enjoy a special discount just for you today.'],
+                        ['💡 Product Tip', 'Quick tip to get the most out of your recent purchase.'],
+                        ['🚨 Urgent Alert', 'Important update regarding your account — action required.'],
+                        ['🤝 Loyalty Reward', 'As a valued customer, you have earned a loyalty reward. Redeem now.'],
+                        ['📱 App Download', 'Download our app today and get an exclusive welcome bonus.'],
+                    ];
+                    foreach ($smsTopics as [$label, $topic]): ?>
+                    <button class="btn btn-sm btn-secondary sms-quick-topic" style="text-align:left;white-space:normal;line-height:1.3;font-size:.82rem"
+                        data-topic="<?= htmlspecialchars($topic) ?>">
+                        <?= htmlspecialchars($label) ?>
+                    </button>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+        </div>
+
+        <!-- Generated SMS result -->
+        <div id="aiSmsResult" style="display:none;margin-top:1.5rem;background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.25);border-radius:12px;padding:1.25rem">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem;flex-wrap:wrap;gap:.5rem">
+                <strong style="color:#10b981">✅ AI Generated SMS</strong>
+                <div style="display:flex;gap:.5rem;align-items:center;font-size:.8rem;color:var(--text-muted)">
+                    <span id="aiSmsCharInfo"></span>
+                    <span id="aiSmsPagesInfo"></span>
+                </div>
+            </div>
+            <textarea id="aiSmsOutput" class="form-control" rows="4" style="font-size:.9rem;margin-bottom:.75rem"></textarea>
+            <div style="display:flex;gap:.75rem;flex-wrap:wrap">
+                <button class="btn btn-primary btn-sm" id="btnUseSms">📋 Use in Message Box</button>
+                <button class="btn btn-sm btn-secondary" id="btnRegenSms">🔄 Regenerate</button>
+                <span style="font-size:.8rem;color:var(--text-muted);align-self:center" id="aiSmsTokenInfo"></span>
+            </div>
+        </div>
+    </div>
+</div>
+</div>
+<?php else: ?>
+<div style="margin-top:2rem">
+<div class="card">
+    <div class="card-body" style="text-align:center;padding:2rem;color:var(--text-muted)">
+        <p>🤖 AI SMS Writer is not configured yet. <a href="/billing.php?tab=ai_tokens">Buy AI Tokens</a> to enable it once the admin configures the service.</p>
+    </div>
+</div>
+</div>
+<?php endif; ?>
+
 <!-- ── Sender ID Registration ───────────────────────────────────────────────── -->
 <div style="margin-top:2rem">
 <div class="dashboard-grid" style="grid-template-columns:1fr 1fr">
@@ -427,6 +551,96 @@ require_once __DIR__ . '/../includes/layout_header.php';
         document.querySelector('#sendForm .btn-text').style.display = 'none';
         document.querySelector('#sendForm .btn-loader').style.display = 'inline';
         document.getElementById('sendBtn').disabled = true;
+    });
+})();
+
+// ── AI SMS Writer ─────────────────────────────────────────────────────────────
+(function () {
+    const btnAi     = document.getElementById('btnAiSms');
+    const btnUse    = document.getElementById('btnUseSms');
+    const btnRegen  = document.getElementById('btnRegenSms');
+    const topicBox  = document.getElementById('aiSmsTopic');
+    const pagesBox  = document.getElementById('aiSmsPages');
+    const brandBox  = document.getElementById('aiSmsBrand');
+    const ctaBox    = document.getElementById('aiSmsCta');
+    const output    = document.getElementById('aiSmsOutput');
+    const result    = document.getElementById('aiSmsResult');
+    const errBox    = document.getElementById('aiSmsErr');
+    const loader    = document.getElementById('aiSmsLoader');
+    const btnText   = document.getElementById('aiSmsBtnText');
+    const charInfo  = document.getElementById('aiSmsCharInfo');
+    const pagesInfo = document.getElementById('aiSmsPagesInfo');
+    const tokenInfo = document.getElementById('aiSmsTokenInfo');
+    const balBadge  = document.getElementById('smsAiBalance');
+    const msgBox    = document.getElementById('messageBox');
+
+    if (!btnAi) return; // AI not enabled
+
+    function setLoading(on) {
+        btnAi.disabled = on;
+        loader.style.display  = on ? '' : 'none';
+        btnText.style.display = on ? 'none' : '';
+    }
+
+    async function generate() {
+        const topic = topicBox.value.trim();
+        if (!topic) { topicBox.focus(); return; }
+        errBox.style.display = 'none';
+        result.style.display = 'none';
+        setLoading(true);
+
+        try {
+            const resp = await fetch('/api/ai-sms.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    topic: topic,
+                    pages: parseInt(pagesBox.value, 10),
+                    brand: brandBox.value.trim(),
+                    cta:   ctaBox.value.trim(),
+                }),
+            });
+            const data = await resp.json();
+            if (!data.success) {
+                errBox.innerHTML = data.message || 'Generation failed. Please try again.';
+                errBox.style.display = '';
+            } else {
+                output.value    = data.text;
+                charInfo.textContent  = data.char_count + ' / ' + data.max_chars + ' chars';
+                pagesInfo.textContent = data.pages + ' SMS page' + (data.pages > 1 ? 's' : '');
+                tokenInfo.textContent = '−' + data.tokens_used + ' token' + (data.tokens_used !== 1 ? 's' : '') + ' used';
+                if (balBadge) balBadge.textContent = data.balance.toLocaleString() + ' tokens';
+                result.style.display = '';
+
+                // Auto-sync pages selector with actual result
+                pagesBox.value = String(data.pages);
+            }
+        } catch (e) {
+            errBox.textContent = 'Network error. Please try again.';
+            errBox.style.display = '';
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    btnAi.addEventListener('click', generate);
+    btnRegen.addEventListener('click', generate);
+
+    // Copy AI text into the main send form
+    btnUse.addEventListener('click', function () {
+        if (!msgBox) return;
+        msgBox.value = output.value;
+        msgBox.dispatchEvent(new Event('input'));
+        msgBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        msgBox.focus();
+    });
+
+    // Quick topic chips
+    document.querySelectorAll('.sms-quick-topic').forEach(btn => {
+        btn.addEventListener('click', function () {
+            topicBox.value = this.dataset.topic;
+            topicBox.dispatchEvent(new Event('input'));
+        });
     });
 })();
 </script>

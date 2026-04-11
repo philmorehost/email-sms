@@ -430,7 +430,8 @@ INSERT INTO app_settings (setting_key, setting_value) VALUES
     ('deepseek_api_key', ''),
     ('deepseek_model', 'deepseek-chat'),
     ('ai_tokens_per_generation', '50'),
-    ('ai_tokens_per_chat_1k', '10')
+    ('ai_tokens_per_chat_1k', '10'),
+    ('ai_tokens_per_sms', '5')
 ON DUPLICATE KEY UPDATE setting_key = setting_key;
 
 -- Wallet Deposits (all deposit methods)
