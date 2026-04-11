@@ -140,8 +140,80 @@ body{margin:0;overflow:hidden}
 .editor-body{display:flex;flex:1;overflow:hidden}
 
 /* ── GrapesJS canvas area ──────────────────────────────────────── */
-#grapesjs-editor{flex:1;overflow:hidden}
+#grapesjs-editor{flex:1;overflow:hidden;position:relative}
 .gjs-editor{height:100%}
+
+/* ── Block sorter toolbar ──────────────────────────────────────── */
+/* Injected per-selection via JS */
+.blk-toolbar{
+    position:absolute;right:-1px;top:0;z-index:900;
+    display:flex;flex-direction:column;gap:2px;
+    background:rgba(26,26,46,.92);border:1px solid rgba(108,99,255,.4);
+    border-radius:0 6px 6px 0;padding:3px;
+    box-shadow:2px 0 12px rgba(0,0,0,.4);
+}
+.blk-toolbar button{
+    background:rgba(255,255,255,.07);border:none;color:#e0e0e0;
+    width:24px;height:24px;border-radius:4px;cursor:pointer;
+    font-size:.8rem;display:flex;align-items:center;justify-content:center;
+    transition:background .15s;
+}
+.blk-toolbar button:hover{background:rgba(108,99,255,.45)}
+.blk-toolbar button:disabled{opacity:.3;cursor:default}
+
+/* Drag-over highlight on canvas rows */
+.gjs-comp-selected>.blk-toolbar{display:flex}
+.gjs-dashed .gjs-comp-selected{outline:2px solid rgba(108,99,255,.6)!important}
+
+/* ── Guide panel ───────────────────────────────────────────────── */
+.guide-panel{
+    position:fixed;top:0;right:0;bottom:0;width:340px;z-index:9999;
+    background:var(--surface,#1a1a2e);border-left:1px solid rgba(255,255,255,.1);
+    display:flex;flex-direction:column;
+    transform:translateX(100%);transition:transform .28s cubic-bezier(.4,0,.2,1);
+    box-shadow:-8px 0 40px rgba(0,0,0,.5);
+}
+.guide-panel.open{transform:translateX(0)}
+.guide-panel-head{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:.9rem 1.25rem;border-bottom:1px solid rgba(255,255,255,.08);
+    flex-shrink:0;
+}
+.guide-panel-head h3{margin:0;font-size:1rem;color:#e0e0e0;display:flex;align-items:center;gap:.5rem}
+.guide-close{background:none;border:none;color:#888;font-size:1.3rem;cursor:pointer;line-height:1;padding:2px 6px;border-radius:4px}
+.guide-close:hover{background:rgba(255,255,255,.08);color:#e0e0e0}
+.guide-body{flex:1;overflow-y:auto;padding:1.25rem}
+.guide-step{
+    display:flex;gap:1rem;margin-bottom:1.5rem;padding-bottom:1.5rem;
+    border-bottom:1px solid rgba(255,255,255,.06);
+}
+.guide-step:last-child{border:none;margin-bottom:0;padding-bottom:0}
+.guide-step-num{
+    flex-shrink:0;width:32px;height:32px;border-radius:50%;
+    background:linear-gradient(135deg,#6c63ff,#00d4ff);
+    display:flex;align-items:center;justify-content:center;
+    font-size:.85rem;font-weight:800;color:#fff;
+}
+.guide-step-body h4{margin:0 0 .35rem;font-size:.9rem;color:#e0e0e0}
+.guide-step-body p{margin:0;font-size:.82rem;color:#9090a8;line-height:1.6}
+.guide-tip{
+    background:rgba(108,99,255,.1);border:1px solid rgba(108,99,255,.25);
+    border-radius:10px;padding:.85rem 1rem;margin-bottom:1rem;
+    font-size:.82rem;color:#c4b5fd;line-height:1.6;
+}
+.guide-tip strong{color:#a78bfa}
+.guide-shortcut-row{display:flex;align-items:center;justify-content:space-between;padding:.35rem 0;font-size:.82rem;border-bottom:1px solid rgba(255,255,255,.05)}
+.guide-shortcut-row:last-child{border:none}
+kbd{
+    background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);
+    border-radius:4px;padding:1px 6px;font-size:.75rem;font-family:monospace;color:#e0e0e0;
+}
+/* ── Guide backdrop overlay ── */
+.guide-backdrop{
+    display:none;position:fixed;inset:0;z-index:9998;
+    background:rgba(0,0,0,.35);
+}
+.guide-backdrop.open{display:block}
 
 /* ── AI Sidebar ────────────────────────────────────────────────── */
 .ai-sidebar{width:320px;flex-shrink:0;display:flex;flex-direction:column;background:var(--surface,#1a1a2e);border-left:1px solid rgba(255,255,255,.08);overflow-y:auto;transition:width .25s}
@@ -176,8 +248,13 @@ body{margin:0;overflow:hidden}
 .ai-err{color:#f87171;font-size:.8rem;margin-top:.4rem;display:none}
 .ai-err.active{display:block}
 
-/* Device preview buttons inside GrapesJS topbar */
+/* GrapesJS overrides */
 .gjs-pn-commands .gjs-pn-buttons{flex-wrap:wrap}
+.gjs-cv-canvas{cursor:default}
+/* Make drop placeholder more visible */
+.gjs-placeholder{background:rgba(108,99,255,.25)!important;border:2px dashed #6c63ff!important}
+/* Highlight hovered components */
+.gjs-hovered{outline:1px dashed rgba(108,99,255,.5)!important}
 </style>
 </head>
 <body>
@@ -192,6 +269,7 @@ body{margin:0;overflow:hidden}
         </div>
         <button class="btn btn-sm btn-secondary" id="btnPreviewMobile" title="Mobile preview">📱</button>
         <button class="btn btn-sm btn-secondary" id="btnPreviewDesktop" title="Desktop preview">🖥️</button>
+        <button class="btn btn-sm btn-secondary" id="btnGuide" title="Show builder guide">❓ Guide</button>
         <button class="btn btn-primary btn-sm" id="btnSave">💾 Save</button>
         <button class="btn btn-sm btn-secondary" id="btnToggleAI" title="Toggle AI Sidebar">🤖 AI</button>
     </div>
@@ -237,6 +315,89 @@ body{margin:0;overflow:hidden}
     </div>
 </div>
 
+<!-- ── Guide panel ──────────────────────────────────────────────────────── -->
+<div class="guide-backdrop" id="guideBackdrop"></div>
+<div class="guide-panel" id="guidePanel">
+    <div class="guide-panel-head">
+        <h3>❓ Email Builder Guide</h3>
+        <button class="guide-close" id="guideClose" title="Close guide">✕</button>
+    </div>
+    <div class="guide-body">
+
+        <div class="guide-tip">
+            <strong>👆 Click any element</strong> in the canvas to select it. A blue outline appears — you can then edit, move, or delete it.
+        </div>
+
+        <div class="guide-step">
+            <div class="guide-step-num">1</div>
+            <div class="guide-step-body">
+                <h4>Add Blocks</h4>
+                <p>Click the <strong>Blocks ☰</strong> tab in the left GrapesJS panel. Drag any block (text, image, button, divider…) into the canvas to add it to your email.</p>
+            </div>
+        </div>
+
+        <div class="guide-step">
+            <div class="guide-step-num">2</div>
+            <div class="guide-step-body">
+                <h4>Drag to Reorder</h4>
+                <p>Hover over a section until the <strong>move cursor ✛</strong> appears on the grey handle on the left side. Drag it up or down to reorder. You can also use the <strong>▲ ▼ arrow buttons</strong> that appear on the top-right of any selected block.</p>
+            </div>
+        </div>
+
+        <div class="guide-step">
+            <div class="guide-step-num">3</div>
+            <div class="guide-step-body">
+                <h4>Edit Content</h4>
+                <p><strong>Double-click</strong> any text block to enter edit mode and type directly. Click outside to exit. Use the right-side <strong>Style Manager</strong> to change colours, fonts, padding and more.</p>
+            </div>
+        </div>
+
+        <div class="guide-step">
+            <div class="guide-step-num">4</div>
+            <div class="guide-step-body">
+                <h4>Select Nested Elements</h4>
+                <p>Use the <strong>breadcrumb bar</strong> at the bottom of the canvas to select parent containers. Or hold <kbd>Ctrl</kbd> and click to force-select a specific nested element.</p>
+            </div>
+        </div>
+
+        <div class="guide-step">
+            <div class="guide-step-num">5</div>
+            <div class="guide-step-body">
+                <h4>Delete a Block</h4>
+                <p>Select the block and press <kbd>Backspace</kbd> or <kbd>Delete</kbd>, or click the <strong>🗑 trash icon</strong> in the GrapesJS toolbar above the canvas.</p>
+            </div>
+        </div>
+
+        <div class="guide-step">
+            <div class="guide-step-num">6</div>
+            <div class="guide-step-body">
+                <h4>Preview on Mobile</h4>
+                <p>Click <strong>📱 Mobile</strong> in the topbar to switch to a 375 px phone view. Design once, looks great everywhere.</p>
+            </div>
+        </div>
+
+        <div class="guide-step">
+            <div class="guide-step-num">7</div>
+            <div class="guide-step-body">
+                <h4>AI Assistant</h4>
+                <p>Click <strong>🤖 AI</strong> to open the AI sidebar. Enter a prompt to auto-generate a full email template, or chat to refine copy. Requires AI tokens.</p>
+            </div>
+        </div>
+
+        <div class="guide-step">
+            <div class="guide-step-num">8</div>
+            <div class="guide-step-body">
+                <h4>Save Your Work</h4>
+                <p>Click <strong>💾 Save</strong> at any time. Your design is stored as structured JSON so you can always reopen and continue editing.</p>
+            </div>
+        </div>
+
+        <p style="font-size:.75rem;color:#606070;margin-top:1.5rem;text-align:center">
+            Powered by GrapesJS · Email Builder v2
+        </p>
+    </div>
+</div>
+
 <script>
 (function () {
 'use strict';
@@ -260,12 +421,24 @@ const editor = grapesjs.init({
     height: '100%',
     width:  'auto',
     storageManager: false,
+    // Allow smooth drag-and-drop reordering
+    canvas: {
+        styles: [
+            // Highlight hovered/selected during drag
+            `
+            *, *::before, *::after { box-sizing: border-box; }
+            [data-gjs-type]:hover { outline: 1px dashed rgba(108,99,255,.4); cursor: pointer; }
+            `
+        ],
+    },
     deviceManager: {
         devices: [
             { name: 'Desktop', width: '' },
             { name: 'Mobile',  width: '375px', widthMedia: '480px' },
         ],
     },
+    // Enable sorting/dragging of blocks natively
+    dragMode: 'absolute',  // will be toggled; set per component type
     panels: {
         defaults: [
             {
@@ -280,23 +453,96 @@ const editor = grapesjs.init({
             },
         ],
     },
+    // Better block settings
+    blockManager: {
+        appendTo: '#grapesjs-editor',
+    },
 });
 
-// Load saved design
+// ── Fix drag mode: use "translate" (flex/block flow) ─────────────────────
+editor.on('load', () => {
+    editor.DomComponents.getWrapper().set('droppable', true);
+    editor.DomComponents.getWrapper().set('draggable', false);
+});
+
+// ── Ensure every added component is selectable and properly positioned ───
+editor.on('component:add', (component) => {
+    component.set({ draggable: true, droppable: true, selectable: true, hoverable: true });
+    // Re-select after add so toolbar appears
+    setTimeout(() => {
+        editor.select(component);
+    }, 80);
+});
+
+// ── Move Up / Move Down commands ─────────────────────────────────────────
+editor.Commands.add('move-up', {
+    run(ed) {
+        const sel = ed.getSelected();
+        if (!sel) return;
+        const parent = sel.parent();
+        if (!parent) return;
+        const idx = parent.components().indexOf(sel);
+        if (idx <= 0) return;
+        parent.components().move(sel, { at: idx - 1 });
+        ed.select(sel);
+        ed.trigger('change:canvasOffset'); // refresh canvas
+    },
+});
+editor.Commands.add('move-down', {
+    run(ed) {
+        const sel = ed.getSelected();
+        if (!sel) return;
+        const parent = sel.parent();
+        if (!parent) return;
+        const siblings = parent.components();
+        const idx = siblings.indexOf(sel);
+        if (idx >= siblings.length - 1) return;
+        siblings.move(sel, { at: idx + 2 }); // +2 because item is still present while moving
+        ed.select(sel);
+        ed.trigger('change:canvasOffset');
+    },
+});
+editor.Commands.add('duplicate-component', {
+    run(ed) {
+        const sel = ed.getSelected();
+        if (!sel) return;
+        const parent = sel.parent();
+        if (!parent) return;
+        const idx = parent.components().indexOf(sel);
+        const clone = sel.clone();
+        parent.components().add(clone, { at: idx + 1 });
+        ed.select(clone);
+    },
+});
+
+// ── Inject Move Up / Down / Duplicate into the GrapesJS component toolbar ─
+editor.on('component:selected', (component) => {
+    const toolbar = component.get('toolbar') || [];
+
+    const ids = toolbar.map(t => t.id || t.command);
+    if (!ids.includes('move-up')) {
+        toolbar.unshift(
+            { id: 'move-up',   attributes: { title: 'Move Up'   }, label: '▲', command: 'move-up'   },
+            { id: 'move-down', attributes: { title: 'Move Down' }, label: '▼', command: 'move-down' },
+            { id: 'duplicate', attributes: { title: 'Duplicate' }, label: '⧉', command: 'duplicate-component' }
+        );
+        component.set('toolbar', toolbar);
+    }
+});
+
+// ── Load saved design ──────────────────────────────────────────────────
 if (INITIAL_JSON) {
     try {
         const parsed = JSON.parse(INITIAL_JSON);
         if (parsed && typeof parsed === 'object') {
             editor.loadProjectData(parsed);
         } else {
-            // Fallback: load raw HTML
             if (INITIAL_HTML) editor.setComponents(INITIAL_HTML);
         }
     } catch (e) {
         if (INITIAL_HTML) editor.setComponents(INITIAL_HTML);
     }
 } else {
-    // Check for HTML from AI workspace redirect
     const wsHtml = sessionStorage.getItem('ai_ws_html');
     if (wsHtml) {
         sessionStorage.removeItem('ai_ws_html');
@@ -304,15 +550,7 @@ if (INITIAL_JSON) {
     }
 }
 
-// Fix non-responsive edit: re-init select after every drop
-editor.on('component:add', function (component) {
-    setTimeout(() => {
-        editor.select(component);
-        editor.trigger('component:deselected', component);
-    }, 10);
-});
-
-// ── Device preview buttons ────────────────────────────────────────────────
+// ── Device preview buttons ─────────────────────────────────────────────
 document.getElementById('btnPreviewMobile').addEventListener('click', () => {
     editor.setDevice('Mobile');
 });
@@ -320,7 +558,9 @@ document.getElementById('btnPreviewDesktop').addEventListener('click', () => {
     editor.setDevice('Desktop');
 });
 
-// ── Save ──────────────────────────────────────────────────────────────────
+// ── Save ───────────────────────────────────────────────────────────────
+let currentTemplateId = TEMPLATE_ID;
+
 document.getElementById('btnSave').addEventListener('click', async () => {
     const btn = document.getElementById('btnSave');
     const name    = document.getElementById('tplName').value.trim() || 'Untitled Template';
@@ -359,15 +599,29 @@ document.getElementById('btnSave').addEventListener('click', async () => {
     }
 });
 
-let currentTemplateId = TEMPLATE_ID;
-
-// ── AI Sidebar toggle ─────────────────────────────────────────────────────
+// ── AI Sidebar toggle ──────────────────────────────────────────────────
 const aiSidebar = document.getElementById('aiSidebar');
 document.getElementById('btnToggleAI').addEventListener('click', () => {
     aiSidebar.classList.toggle('collapsed');
 });
 
-// ── Token balance poller ──────────────────────────────────────────────────
+// ── Guide panel toggle ─────────────────────────────────────────────────
+const guidePanel    = document.getElementById('guidePanel');
+const guideBackdrop = document.getElementById('guideBackdrop');
+function openGuide()  { guidePanel.classList.add('open'); guideBackdrop.classList.add('open'); }
+function closeGuide() { guidePanel.classList.remove('open'); guideBackdrop.classList.remove('open'); }
+document.getElementById('btnGuide').addEventListener('click', openGuide);
+document.getElementById('guideClose').addEventListener('click', closeGuide);
+guideBackdrop.addEventListener('click', closeGuide);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeGuide(); });
+
+// Show guide automatically on first visit
+if (!localStorage.getItem('emailEditorGuideShown')) {
+    setTimeout(openGuide, 800);
+    localStorage.setItem('emailEditorGuideShown', '1');
+}
+
+// ── Token balance poller ───────────────────────────────────────────────
 async function refreshBalance() {
     try {
         const res = await fetch('/api/ai-token-balance.php');
@@ -380,7 +634,7 @@ async function refreshBalance() {
 }
 setInterval(refreshBalance, 30000);
 
-// ── Generate template ─────────────────────────────────────────────────────
+// ── Generate template ──────────────────────────────────────────────────
 document.getElementById('btnGenerate').addEventListener('click', async () => {
     const prompt = document.getElementById('genPrompt').value.trim();
     if (!prompt) { showErr('genError', 'Please enter a prompt.'); return; }
@@ -411,7 +665,7 @@ document.getElementById('btnGenerate').addEventListener('click', async () => {
     }
 });
 
-// ── Chat ──────────────────────────────────────────────────────────────────
+// ── Chat ───────────────────────────────────────────────────────────────
 const chatHistory = [];
 
 document.getElementById('btnChat').addEventListener('click', sendChat);
@@ -455,7 +709,6 @@ async function sendChat() {
 function addChatMsg(role, text) {
     const el = document.createElement('div');
     el.className = 'chat-msg ' + role;
-    // Allow basic HTML links in assistant messages
     el.innerHTML = role === 'assistant'
         ? text.replace(/</g, '&lt;').replace(/https?:\/\/\S+/g, (url) => `<a href="${url}" target="_blank" rel="noopener">${url}</a>`)
         : escHtml(text);
@@ -467,7 +720,6 @@ function addChatMsg(role, text) {
 function escHtml(str) {
     return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
-
 function showSpinner(id, show) {
     document.getElementById(id).classList.toggle('active', show);
 }
@@ -477,8 +729,7 @@ function showErr(id, msg) {
     el.classList.add('active');
 }
 function hideErr(id) {
-    const el = document.getElementById(id);
-    el.classList.remove('active');
+    document.getElementById(id).classList.remove('active');
 }
 
 })();

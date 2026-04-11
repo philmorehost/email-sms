@@ -210,7 +210,7 @@ body { display: block; }
     background: rgba(5,5,12,.98); border-top: 1px solid rgba(255,255,255,.07);
     padding: 3rem 5% 2rem;
 }
-.lp-footer-grid { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 2rem; margin-bottom: 3rem; }
+.lp-footer-grid { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr; gap: 2rem; margin-bottom: 3rem; }
 @media (max-width: 700px) { .lp-footer-grid { grid-template-columns: 1fr 1fr; } }
 .lp-footer-brand strong {
     font-size: 1.1rem; font-weight: 800;
@@ -255,6 +255,7 @@ body { display: block; }
         <a href="#how-it-works">How It Works</a>
         <a href="#fair-billing">SMS Pricing</a>
         <a href="#email-pricing">Email Plans</a>
+        <a href="#social">Social &amp; AI</a>
         <a href="#contact">Contact</a>
     </div>
     <div class="lp-nav-actions">
@@ -269,18 +270,18 @@ body { display: block; }
 <!-- ══ HERO ══════════════════════════════════════════════════════════════════ -->
 <section class="hero">
     <div class="hero-inner">
-        <div class="hero-badge">🚀 Trusted Bulk Messaging Platform</div>
-        <h1>Reach Every Customer<br>Instantly at Scale</h1>
-        <p>Send bulk SMS and email campaigns to thousands of contacts with blazing-fast delivery, real-time analytics, and affordable per-page pricing.</p>
+        <div class="hero-badge">🚀 Omni-Channel Marketing Platform</div>
+        <h1>SMS · Email · Social Media<br>— Powered by AI</h1>
+        <p>Send bulk SMS, design beautiful email campaigns, and publish to every social media platform in one click. DeepSeek AI writes your copy, schedules posts at the perfect time, and tracks every engagement — all from one dashboard.</p>
         <div class="hero-ctas">
             <a href="/register.php" class="btn btn-primary btn-lg">Start Free Today</a>
-            <a href="#pricing" class="btn-outline btn-lg">View Pricing</a>
+            <a href="#features" class="btn-outline btn-lg">Explore Features</a>
         </div>
         <div class="hero-stats">
             <div class="hero-stat"><strong><?= $currSym ?><?= number_format($smsUnitPrice, 2) ?></strong><span>Per SMS Page</span></div>
+            <div class="hero-stat"><strong>7</strong><span>Social Platforms</span></div>
             <div class="hero-stat"><strong>99.9%</strong><span>Uptime SLA</span></div>
-            <div class="hero-stat"><strong>5s</strong><span>Avg. Delivery</span></div>
-            <div class="hero-stat"><strong>24/7</strong><span>Support</span></div>
+            <div class="hero-stat"><strong>AI</strong><span>Content Engine</span></div>
         </div>
     </div>
 </section>
@@ -301,13 +302,28 @@ body { display: block; }
             </div>
             <div class="feature-card">
                 <div class="feature-icon">📧</div>
-                <h3>Email Marketing</h3>
-                <p>Design beautiful emails with our template builder, schedule campaigns, track opens and clicks, and manage unsubscribes automatically.</p>
+                <h3>Drag-and-Drop Email Builder</h3>
+                <p>Design pixel-perfect emails with our visual block editor. Drag sections, reorder with ▲▼ arrows, preview on mobile, and save reusable templates — no code required.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🤖</div>
+                <h3>DeepSeek AI Content Studio</h3>
+                <p>Generate full email templates, SMS copy, and social media captions from a single prompt. Create up to 5 A/B variants, platform-specific personas, and hashtags in seconds.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">📱</div>
+                <h3>Social Media Marketing</h3>
+                <p>Post simultaneously to Facebook, Instagram, LinkedIn, Twitter/X, TikTok, Pinterest and YouTube. Schedule at AI-recommended peak times for maximum reach and engagement.</p>
             </div>
             <div class="feature-card">
                 <div class="feature-icon">📊</div>
                 <h3>Real-time Analytics</h3>
-                <p>Track delivery rates, open rates, click-throughs, and failures as they happen. Export reports in CSV with a single click.</p>
+                <p>Track delivery rates, open rates, click-throughs, social engagement, and failures as they happen. Export reports in CSV with a single click.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">⏰</div>
+                <h3>AI Smart Scheduler</h3>
+                <p>Let AI analyse your audience's activity patterns and recommend the top 3 best posting times per platform. Schedule once, publish everywhere at the perfect moment.</p>
             </div>
             <div class="feature-card">
                 <div class="feature-icon">🔐</div>
@@ -315,29 +331,29 @@ body { display: block; }
                 <p>MFA on every account, brute-force protection, IP whitelisting/blacklisting, country firewall, and end-to-end encrypted API credentials.</p>
             </div>
             <div class="feature-card">
-                <div class="feature-icon">📅</div>
-                <h3>Campaign Scheduling</h3>
-                <p>Set campaigns to send at any future date and time in any timezone. Never miss the right moment to reach your audience.</p>
+                <div class="feature-icon">💳</div>
+                <h3>Flexible Multi-Gateway Billing</h3>
+                <p>Fund your wallet via Flutterwave (NGN), Payhub virtual bank, PayPal, Stripe, or Plisio crypto. SMS credits, AI tokens, and Social tokens — one unified wallet.</p>
             </div>
             <div class="feature-card">
                 <div class="feature-icon">👥</div>
                 <h3>Contact Management</h3>
-                <p>Import, organise, and segment contacts into groups. Manage phonebooks and email lists from one unified interface.</p>
+                <p>Import, organise, and segment contacts into phonebooks and email lists. Manage opt-outs and unsubscribes automatically from one unified interface.</p>
             </div>
             <div class="feature-card">
                 <div class="feature-icon">🔑</div>
-                <h3>API Access</h3>
+                <h3>REST API Access</h3>
                 <p>Integrate SMS and email into your own app with our REST API. Generate API keys, manage permissions, and track usage per key.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon">💳</div>
-                <h3>Flexible Credits</h3>
-                <p>Buy SMS credit packages on one-time, monthly, quarterly, or yearly plans. Credits never expire on one-time purchases.</p>
             </div>
             <div class="feature-card">
                 <div class="feature-icon">🗺️</div>
                 <h3>Sender ID Management</h3>
                 <p>Register custom Sender IDs and Caller IDs. Get fast approval and appear as your brand name in every message.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">📅</div>
+                <h3>Campaign Scheduling</h3>
+                <p>Set SMS and email campaigns to fire at any future date and time in any timezone. Never miss the right moment to reach your audience.</p>
             </div>
         </div>
     </div>
@@ -349,28 +365,33 @@ body { display: block; }
         <div class="section-center">
             <span class="section-label">Simple Process</span>
             <h2 class="section-title">Up &amp; Running in Minutes</h2>
-            <p class="section-sub">No complex setup. Just sign up, top up, and send.</p>
+            <p class="section-sub">No complex setup. Sign up, connect, and launch — whether it's SMS, email, or social.</p>
         </div>
         <div class="steps-grid">
             <div class="step">
                 <div class="step-num">1</div>
                 <h3>Create Account</h3>
-                <p>Register with your email and verify with a one-time code sent instantly to your inbox.</p>
+                <p>Register with your email and verify with a one-time code sent instantly to your inbox. Free to start.</p>
             </div>
             <div class="step">
                 <div class="step-num">2</div>
-                <h3>Buy Credits</h3>
-                <p>Choose a credit package that suits your volume — from small bursts to enterprise-scale monthly plans.</p>
+                <h3>Top Up Wallet</h3>
+                <p>Buy SMS credits, AI tokens, or Social tokens via Flutterwave, Payhub, PayPal, Stripe, or crypto. One wallet, all services.</p>
             </div>
             <div class="step">
                 <div class="step-num">3</div>
-                <h3>Add Contacts</h3>
-                <p>Import your contact list, organise into groups, and manage opt-outs automatically.</p>
+                <h3>Connect Channels</h3>
+                <p>Import contacts, link your social accounts, and configure your Sender ID — everything ready from one dashboard.</p>
             </div>
             <div class="step">
                 <div class="step-num">4</div>
-                <h3>Send &amp; Track</h3>
-                <p>Launch your campaign instantly or schedule it. Watch delivery reports roll in live.</p>
+                <h3>Generate with AI</h3>
+                <p>Type a one-line brief. DeepSeek AI writes your SMS copy, email template, or social post — complete with hashtags and A/B variants.</p>
+            </div>
+            <div class="step">
+                <div class="step-num">5</div>
+                <h3>Schedule &amp; Send</h3>
+                <p>Post instantly or let AI pick the best time. Launch to every channel at once and watch live delivery and engagement roll in.</p>
             </div>
         </div>
     </div>
@@ -475,21 +496,21 @@ body { display: block; }
         </div>
         <div class="trust-grid">
             <div class="trust-card">
-                <p>"We switched from another provider and immediately noticed the delivery speed. Our OTP messages now arrive in under 3 seconds."</p>
+                <p>"We switched from another provider and immediately noticed the delivery speed. Our OTP messages now arrive in under 3 seconds. The AI copy feature is a game changer."</p>
                 <div class="trust-author">
                     <div class="trust-avatar">AO</div>
                     <div><div class="trust-name">Adebayo O.</div><div class="trust-role">CTO, FinTech Startup</div></div>
                 </div>
             </div>
             <div class="trust-card">
-                <p>"The per-page billing is transparent and fair. I know exactly what I'll pay before sending. No surprises on the invoice."</p>
+                <p>"The social media scheduler saved us hours every week. I type a brief and the AI produces platform-ready captions for Instagram, LinkedIn, and Twitter — simultaneously."</p>
                 <div class="trust-author">
                     <div class="trust-avatar">CU</div>
                     <div><div class="trust-name">Chioma U.</div><div class="trust-role">Marketing Manager, Retail Chain</div></div>
                 </div>
             </div>
             <div class="trust-card">
-                <p>"Setting up bulk SMS took less than 10 minutes. The dashboard is clean and the analytics are exactly what we needed."</p>
+                <p>"The drag-and-drop email builder is the cleanest I've used. Reordering blocks is instant, the mobile preview is accurate, and the AI fills the copy in seconds."</p>
                 <div class="trust-author">
                     <div class="trust-avatar">EK</div>
                     <div><div class="trust-name">Emeka K.</div><div class="trust-role">Co-founder, E-commerce Platform</div></div>
@@ -499,11 +520,47 @@ body { display: block; }
     </div>
 </section>
 
+<!-- ══ SOCIAL & AI SPOTLIGHT ════════════════════════════════════════════════ -->
+<section class="lp-section" id="social">
+    <div style="max-width:1100px;margin:0 auto">
+        <div class="section-center">
+            <span class="section-label">New Feature</span>
+            <h2 class="section-title">One Brief. Seven Platforms.<br>Zero Effort.</h2>
+            <p class="section-sub">Our AI Social Media Marketing suite lets you write once and publish everywhere — powered by DeepSeek AI and Ayrshare's unified social API.</p>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.5rem;margin-top:1rem">
+            <div class="feature-card" style="background:rgba(108,99,255,.07);border-color:rgba(108,99,255,.25)">
+                <div class="feature-icon">✍️</div>
+                <h3>AI Writes Your Posts</h3>
+                <p>Enter your goal, brand name, and target audience. DeepSeek generates platform-specific captions — professional for LinkedIn, punchy for Twitter/X, trendy for TikTok — with hashtags included.</p>
+            </div>
+            <div class="feature-card" style="background:rgba(0,212,255,.05);border-color:rgba(0,212,255,.2)">
+                <div class="feature-icon">🔀</div>
+                <h3>A/B Variant Testing</h3>
+                <p>Generate up to 5 caption variants per platform. Pick your favourite, edit inline, then publish or schedule — all from one screen.</p>
+            </div>
+            <div class="feature-card" style="background:rgba(16,185,129,.05);border-color:rgba(16,185,129,.2)">
+                <div class="feature-icon">📡</div>
+                <h3>Post to 7 Platforms at Once</h3>
+                <p>Facebook · Instagram · LinkedIn · Twitter/X · TikTok · Pinterest · YouTube. Connect all accounts once; publish with a single click forever after.</p>
+            </div>
+            <div class="feature-card" style="background:rgba(251,191,36,.05);border-color:rgba(251,191,36,.2)">
+                <div class="feature-icon">🕐</div>
+                <h3>AI Best-Time Scheduling</h3>
+                <p>Our smart scheduler analyses your followers' activity and recommends the top 3 optimal posting windows — then queues your post automatically.</p>
+            </div>
+        </div>
+        <div style="text-align:center;margin-top:2.5rem">
+            <a href="/register.php" class="btn btn-primary btn-lg">Start with Social Marketing</a>
+        </div>
+    </div>
+</section>
+
 <!-- ══ CTA ════════════════════════════════════════════════════════════════════ -->
 <section class="cta-section" id="contact">
     <div style="max-width:700px;margin:0 auto">
-        <h2>Ready to Reach Your Audience?</h2>
-        <p>Join hundreds of businesses already sending smarter with <?= htmlspecialchars($appName) ?>. Sign up in seconds — no credit card required to register.</p>
+        <h2>Ready to Reach Your Audience Everywhere?</h2>
+        <p>Join hundreds of businesses already sending smarter with <?= htmlspecialchars($appName) ?>. SMS, email, and social — all powered by AI. Sign up in seconds — no credit card required to register.</p>
         <div class="cta-btns">
             <a href="/register.php" class="btn btn-primary btn-lg">Create Free Account</a>
             <a href="/login.php" class="btn-outline btn-lg">Sign In</a>
@@ -516,7 +573,7 @@ body { display: block; }
     <div class="lp-footer-grid">
         <div class="lp-footer-brand">
             <strong>📧 <?= htmlspecialchars($appName) ?></strong>
-            <p>A powerful bulk SMS and email marketing platform built for Nigerian businesses and beyond. Fast delivery, fair pricing, enterprise security.</p>
+            <p>An omni-channel marketing platform built for Nigerian businesses and beyond. Bulk SMS, AI email builder, social media marketing, and DeepSeek AI content — all in one place.</p>
         </div>
         <div>
             <h4>Platform</h4>
@@ -525,6 +582,15 @@ body { display: block; }
                 <li><a href="#fair-billing">SMS Pricing</a></li>
                 <li><a href="#email-pricing">Email Plans</a></li>
                 <li><a href="#how-it-works">How It Works</a></li>
+            </ul>
+        </div>
+        <div>
+            <h4>Services</h4>
+            <ul>
+                <li><a href="/login.php">Bulk SMS</a></li>
+                <li><a href="/login.php">Email Builder</a></li>
+                <li><a href="/login.php">Social Marketing</a></li>
+                <li><a href="/login.php">AI Content Studio</a></li>
             </ul>
         </div>
         <div>
