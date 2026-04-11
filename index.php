@@ -253,7 +253,7 @@ body { display: block; }
     <div class="lp-nav-links">
         <a href="#features">Features</a>
         <a href="#how-it-works">How It Works</a>
-        <a href="#sms-pricing">SMS Pricing</a>
+        <a href="#fair-billing">SMS Pricing</a>
         <a href="#email-pricing">Email Plans</a>
         <a href="#contact">Contact</a>
     </div>
@@ -377,7 +377,7 @@ body { display: block; }
 </section>
 
 <!-- ══ SMS PAGE CALCULATION ═══════════════════════════════════════════════════ -->
-<section class="lp-section lp-section-alt">
+<section class="lp-section lp-section-alt" id="fair-billing">
     <div style="max-width:900px;margin:0 auto;text-align:center">
         <span class="section-label">Fair Billing</span>
         <h2 class="section-title">Transparent Per-Page Pricing</h2>
@@ -413,64 +413,6 @@ body { display: block; }
     </div>
 </section>
 
-<!-- ══ PRICING ═══════════════════════════════════════════════════════════════ -->
-<section class="lp-section" id="sms-pricing">
-    <div style="max-width:1200px;margin:0 auto">
-        <div class="section-center">
-            <span class="section-label">SMS Pricing</span>
-            <h2 class="section-title">Affordable SMS Credit Packages</h2>
-            <p class="section-sub">Buy SMS units upfront and use them whenever you need. The more you buy, the better the value.</p>
-        </div>
-
-        <?php if (empty($packages)): ?>
-        <div style="text-align:center;padding:3rem;color:#8888a8">
-            <p style="font-size:1.1rem">Contact us for custom pricing tailored to your volume.</p>
-            <a href="/register.php" class="btn btn-primary btn-lg" style="margin-top:1.5rem;display:inline-block">Get a Quote</a>
-        </div>
-        <?php else: ?>
-        <?php
-        $billingLabels = ['one_time'=>'One-Time','monthly'=>'Monthly','quarterly'=>'Quarterly','yearly'=>'Yearly'];
-        $popularIdx    = count($packages) > 1 ? (int)floor(count($packages) / 2) : -1;
-        ?>
-        <div class="pricing-grid">
-        <?php foreach ($packages as $i => $pkg):
-            $isPopular = ($i === $popularIdx);
-            $bLabel    = $billingLabels[$pkg['billing_period'] ?? 'one_time'] ?? 'One-Time';
-        ?>
-            <div class="pricing-card <?= $isPopular ? 'featured' : '' ?>">
-                <?php if ($isPopular): ?><div class="pricing-badge">⭐ Most Popular</div><?php endif; ?>
-                <div class="pricing-period"><?= htmlspecialchars($bLabel) ?></div>
-                <div class="pricing-name"><?= htmlspecialchars($pkg['name']) ?></div>
-                <div class="pricing-credits"><?= number_format((int)$pkg['credits']) ?></div>
-                <div class="pricing-credits-label">SMS Units / Credits</div>
-                <div class="pricing-price">
-                    <?= $currSym ?><?= number_format((float)$pkg['price'], 2) ?>
-                    <?php if ($pkg['billing_period'] !== 'one_time'): ?>
-                    <small>/<?= strtolower($bLabel) ?></small>
-                    <?php endif; ?>
-                </div>
-                <ul class="pricing-features">
-                    <li><span class="check">✓</span><?= number_format((int)$pkg['credits']) ?> SMS credits</li>
-                    <li><span class="check">✓</span><?= $currSym ?><?= number_format($smsUnitPrice, 2) ?>/page pricing</li>
-                    <li><span class="check">✓</span>Bulk, Corporate &amp; Global routes</li>
-                    <li><span class="check">✓</span>Real-time delivery reports</li>
-                    <?php if ($pkg['billing_period'] !== 'one_time'): ?>
-                    <li><span class="check">✓</span>Auto-renewed <?= strtolower($bLabel) ?></li>
-                    <?php else: ?>
-                    <li><span class="check">✓</span>Credits never expire</li>
-                    <?php endif; ?>
-                </ul>
-                <a href="/register.php" class="btn <?= $isPopular ? 'btn-primary' : 'btn-outline' ?>" style="width:100%;text-align:center;display:block;border-radius:50px;padding:.75rem 1.5rem">
-                    Get Started
-                </a>
-                <p class="pricing-unit">≈ <?= number_format((int)$pkg['credits']) ?> individual SMS pages</p>
-            </div>
-        <?php endforeach; ?>
-        </div>
-        <?php endif; ?>
-    </div>
-</section>
-
 <!-- ══ EMAIL PLANS ════════════════════════════════════════════════════════════ -->
 <section class="lp-section lp-section-alt" id="email-pricing">
     <div style="max-width:1200px;margin:0 auto">
@@ -496,8 +438,8 @@ body { display: block; }
                 <?php if ($isPopular): ?><div class="pricing-badge">⭐ Most Popular</div><?php endif; ?>
                 <div class="pricing-period" style="color:#10b981">Monthly Email Plan</div>
                 <div class="pricing-name"><?= htmlspecialchars($ep['name']) ?></div>
-                <div class="pricing-credits" style="color:#10b981"><?= number_format((int)$ep['monthly_email_limit']) ?></div>
-                <div class="pricing-credits-label">Emails / Month</div>
+                <div class="pricing-credits" style="color:#10b981"><?= (int)$ep['monthly_email_limit'] > 0 ? number_format((int)$ep['monthly_email_limit']) : '∞' ?></div>
+                <div class="pricing-credits-label"><?= (int)$ep['monthly_email_limit'] > 0 ? 'Emails / Month' : 'Unlimited Emails' ?></div>
                 <div class="pricing-price">
                     <?= $currSym ?><?= number_format((float)$ep['price'], 2) ?>
                     <small>/month</small>
@@ -506,7 +448,7 @@ body { display: block; }
                 <p style="color:#b8b8cc;font-size:.85rem;margin-bottom:.75rem;line-height:1.5"><?= htmlspecialchars($ep['description']) ?></p>
                 <?php endif; ?>
                 <ul class="pricing-features">
-                    <li><span class="check" style="color:#10b981">✓</span><?= number_format((int)$ep['monthly_email_limit']) ?> emails/month</li>
+                    <li><span class="check" style="color:#10b981">✓</span><?= (int)$ep['monthly_email_limit'] > 0 ? number_format((int)$ep['monthly_email_limit']) . ' emails/month' : 'Unlimited emails/month' ?></li>
                     <li><span class="check" style="color:#10b981">✓</span>Template builder included</li>
                     <li><span class="check" style="color:#10b981">✓</span>Real-time open/click tracking</li>
                     <li><span class="check" style="color:#10b981">✓</span>Unsubscribe management</li>
@@ -580,7 +522,7 @@ body { display: block; }
             <h4>Platform</h4>
             <ul>
                 <li><a href="#features">Features</a></li>
-                <li><a href="#sms-pricing">SMS Pricing</a></li>
+                <li><a href="#fair-billing">SMS Pricing</a></li>
                 <li><a href="#email-pricing">Email Plans</a></li>
                 <li><a href="#how-it-works">How It Works</a></li>
             </ul>
