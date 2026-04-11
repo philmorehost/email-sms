@@ -60,6 +60,36 @@ try {
     }
 } catch (\Exception $e) {}
 
+// AI token tables
+try {
+    $db->exec("CREATE TABLE IF NOT EXISTS ai_token_packages (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(100) NOT NULL,
+        tokens INT NOT NULL,
+        price DECIMAL(10,2) NOT NULL,
+        is_active BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )");
+    $db->exec("CREATE TABLE IF NOT EXISTS user_ai_tokens (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL UNIQUE,
+        balance INT NOT NULL DEFAULT 0,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_uat_user (user_id)
+    )");
+    $db->exec("CREATE TABLE IF NOT EXISTS ai_token_ledger (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        delta INT NOT NULL,
+        action ENUM('purchase','generate','chat','refund','admin_grant') NOT NULL,
+        template_id INT NULL,
+        campaign_id INT NULL,
+        description VARCHAR(255),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_atl_user (user_id)
+    )");
+} catch (\Exception $e) {}
+
 // ── Flash helpers ─────────────────────────────────────────────────────────────
 function setFlash(string $msg, string $type = 'success'): void {
     if (session_status() === PHP_SESSION_NONE) session_start();
@@ -250,6 +280,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         redirect('/billing.php?tab=email_plans');
     }
+
+    // ── Buy AI token package with wallet balance ──────────────────────────────
+    if ($action === 'buy_ai_tokens') {
+        $packageId = (int)($_POST['package_id'] ?? 0);
+        if ($packageId <= 0) { setFlash('Please select a valid package.', 'error'); redirect('/billing.php?tab=ai_tokens'); }
+        try {
+            $db->beginTransaction();
+
+            $pkgStmt = $db->prepare("SELECT * FROM ai_token_packages WHERE id=? AND is_active=1");
+            $pkgStmt->execute([$packageId]);
+            $pkg = $pkgStmt->fetch();
+            if (!$pkg) { $db->rollBack(); setFlash('Package not found or inactive.', 'error'); redirect('/billing.php?tab=ai_tokens'); }
+
+            $wStmt = $db->prepare("SELECT credits FROM user_sms_wallet WHERE user_id=? FOR UPDATE");
+            $wStmt->execute([$userId]);
+            $currentBalance = (float)($wStmt->fetchColumn() ?: 0.0);
+            $price  = (float)$pkg['price'];
+            $tokens = (int)$pkg['tokens'];
+
+            if ($currentBalance < $price) {
+                $db->rollBack();
+                setFlash('Insufficient wallet balance. Please deposit funds first.', 'error');
+                redirect('/billing.php?tab=ai_tokens');
+            }
+
+            $ref = 'AI-' . strtoupper(bin2hex(random_bytes(5)));
+
+            // Deduct from wallet
+            $db->prepare("UPDATE user_sms_wallet SET credits=credits-?, updated_at=NOW() WHERE user_id=?")
+               ->execute([$price, $userId]);
+            $db->prepare("INSERT INTO sms_credit_transactions (user_id,amount,type,description,reference) VALUES(?,?,'debit',?,?)")
+               ->execute([$userId, $price, 'AI Tokens: ' . $pkg['name'], $ref]);
+
+            // Credit AI tokens
+            $db->prepare("INSERT INTO user_ai_tokens (user_id,balance) VALUES(?,?) ON DUPLICATE KEY UPDATE balance=balance+?, updated_at=NOW()")
+               ->execute([$userId, $tokens, $tokens]);
+            $db->prepare("INSERT INTO ai_token_ledger (user_id,delta,action,description) VALUES(?,?,'purchase',?)")
+               ->execute([$userId, $tokens, 'Purchase: ' . $pkg['name'] . ' (' . $ref . ')']);
+
+            $db->commit();
+            setFlash('Successfully purchased ' . number_format($tokens) . ' AI tokens for ' . currencySymbol() . number_format($price, 2) . '!');
+        } catch (\Exception $e) {
+            $db->rollBack();
+            error_log('buy_ai_tokens: ' . $e->getMessage());
+            setFlash('Error processing purchase. Please try again.', 'error');
+        }
+        redirect('/billing.php?tab=ai_tokens');
+    }
 }
 
 $flash     = popFlash();
@@ -368,6 +446,24 @@ if ($mySubscription) {
     } catch (\Exception $e) {}
 }
 
+// ── AI Tokens ─────────────────────────────────────────────────────────────────
+$aiBalance   = 0;
+$aiPackages  = [];
+$aiLedger    = [];
+try {
+    $aiBalStmt = $db->prepare("SELECT balance FROM user_ai_tokens WHERE user_id=?");
+    $aiBalStmt->execute([$userId]);
+    $aiBalance = (int)($aiBalStmt->fetchColumn() ?: 0);
+} catch (\Exception $e) {}
+try {
+    $aiPackages = $db->query("SELECT * FROM ai_token_packages WHERE is_active=1 ORDER BY price ASC")->fetchAll();
+} catch (\Exception $e) {}
+try {
+    $aiLedger = $db->prepare("SELECT * FROM ai_token_ledger WHERE user_id=? ORDER BY created_at DESC LIMIT 20");
+    $aiLedger->execute([$userId]);
+    $aiLedger = $aiLedger->fetchAll();
+} catch (\Exception $e) {}
+
 $pageTitle  = 'Credits & Subscriptions';
 $activePage = 'billing';
 require_once __DIR__ . '/includes/layout_header.php';
@@ -447,6 +543,7 @@ require_once __DIR__ . '/includes/layout_header.php';
 <div class="tabs">
     <a href="/billing.php?tab=wallet"       class="tab-btn <?= $activeTab === 'wallet'       ? 'active' : '' ?>">💼 SMS Wallet</a>
     <a href="/billing.php?tab=email_plans"  class="tab-btn <?= $activeTab === 'email_plans'  ? 'active' : '' ?>">📧 Email Plans</a>
+    <a href="/billing.php?tab=ai_tokens"    class="tab-btn <?= $activeTab === 'ai_tokens'    ? 'active' : '' ?>">🤖 AI Tokens</a>
     <a href="/billing.php?tab=transactions" class="tab-btn <?= $activeTab === 'transactions' ? 'active' : '' ?>">📊 Transactions</a>
 </div>
 
@@ -640,6 +737,95 @@ require_once __DIR__ . '/includes/layout_header.php';
 
 <!-- ── MY REQUESTS TAB (hidden — SMS packages removed) ────────────────────── -->
 <div class="tab-pane" style="display:none">
+</div>
+
+<!-- ── AI TOKENS TAB ─────────────────────────────────────────────────────────── -->
+<div class="tab-pane <?= $activeTab === 'ai_tokens' ? 'active' : '' ?>">
+
+    <!-- Balance hero -->
+    <div style="background:linear-gradient(135deg,#6c63ff,#8b5cf6);border-radius:20px;padding:2rem;margin-bottom:1.75rem;text-align:center;color:#fff">
+        <div style="font-size:3rem;font-weight:800;line-height:1"><?= number_format($aiBalance) ?></div>
+        <div style="font-size:.95rem;opacity:.85;margin-top:.5rem">AI Tokens Remaining</div>
+        <div style="display:flex;justify-content:center;gap:1rem;margin-top:1rem;flex-wrap:wrap">
+            <a href="/user/ai-workspace.php" class="btn btn-sm" style="background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.4)">🤖 Open AI Workspace</a>
+            <a href="/user/email-editor.php" class="btn btn-sm" style="background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.4)">✏️ Template Editor</a>
+        </div>
+    </div>
+
+    <?php if (empty($aiPackages)): ?>
+    <div class="card">
+        <div class="card-body" style="text-align:center;padding:3rem;color:var(--text-muted)">
+            <p>No AI token packages available yet. Please contact an administrator.</p>
+        </div>
+    </div>
+    <?php else: ?>
+    <h3 style="margin-bottom:1rem">Buy AI Tokens</h3>
+    <div class="packages-grid">
+        <?php
+        $popularIdx = count($aiPackages) > 1 ? (int)floor(count($aiPackages) / 2) : -1;
+        foreach ($aiPackages as $idx => $ap):
+            $isPopular = ($idx === $popularIdx);
+            $canAfford = $walletBalance >= (float)$ap['price'];
+        ?>
+        <div class="pkg-card <?= $isPopular ? 'popular' : '' ?>">
+            <?php if ($isPopular): ?><div class="pkg-popular-badge">⭐ Best Value</div><?php endif; ?>
+            <div class="pkg-period">AI Credit Package</div>
+            <div class="pkg-name"><?= htmlspecialchars($ap['name']) ?></div>
+            <div class="pkg-credits"><?= number_format((int)$ap['tokens']) ?></div>
+            <div class="pkg-credits-label">AI Tokens</div>
+            <div class="pkg-price">
+                <?= htmlspecialchars($currSym) ?><?= number_format((float)$ap['price'], 2) ?>
+                <small>one-time</small>
+            </div>
+            <?php if ($canAfford): ?>
+            <form method="POST" action="/billing.php">
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken()) ?>">
+                <input type="hidden" name="action" value="buy_ai_tokens">
+                <input type="hidden" name="package_id" value="<?= (int)$ap['id'] ?>">
+                <button type="submit" class="btn btn-primary" style="width:100%"
+                        onclick="return confirm('Buy <?= number_format((int)$ap['tokens']) ?> AI tokens for <?= htmlspecialchars($currSym) ?><?= number_format((float)$ap['price'], 2) ?>?')">
+                    💰 Buy with Wallet
+                </button>
+            </form>
+            <?php else: ?>
+            <a href="/deposit.php" class="btn btn-secondary" style="width:100%;text-align:center;display:block">
+                💳 Deposit to Buy
+            </a>
+            <?php endif; ?>
+        </div>
+        <?php endforeach; ?>
+    </div>
+    <?php endif; ?>
+
+    <!-- Recent AI token activity -->
+    <?php if (!empty($aiLedger)): ?>
+    <h3 style="margin:1.75rem 0 1rem">Recent AI Token Activity</h3>
+    <div class="card">
+        <div class="table-responsive">
+        <table class="table">
+            <thead><tr><th>Date</th><th>Action</th><th>Tokens</th><th>Description</th></tr></thead>
+            <tbody>
+            <?php foreach ($aiLedger as $row): ?>
+            <tr>
+                <td style="font-size:.82rem"><?= timeAgo($row['created_at']) ?></td>
+                <td>
+                    <?php $ac = $row['action']; $aColors = ['purchase'=>'#10b981','generate'=>'#f59e0b','chat'=>'#6c63ff','refund'=>'#06b6d4','admin_grant'=>'#8b5cf6']; ?>
+                    <span style="background:<?= $aColors[$ac] ?? '#666' ?>22;color:<?= $aColors[$ac] ?? '#aaa' ?>;padding:2px 8px;border-radius:6px;font-size:.8rem">
+                        <?= htmlspecialchars($ac) ?>
+                    </span>
+                </td>
+                <td style="color:<?= $row['delta'] > 0 ? 'var(--success)' : 'var(--danger)' ?>;font-weight:600">
+                    <?= $row['delta'] > 0 ? '+' : '' ?><?= number_format((int)$row['delta']) ?>
+                </td>
+                <td style="font-size:.85rem"><?= htmlspecialchars($row['description'] ?? '') ?></td>
+            </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        </div>
+    </div>
+    <?php endif; ?>
+
 </div>
 
 <!-- ── TRANSACTIONS TAB ───────────────────────────────────────────────────── -->

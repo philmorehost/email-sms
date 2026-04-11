@@ -48,6 +48,16 @@ $isSuperAdmin = ($user['role'] ?? '') === 'superadmin';
         </div>
 
         <div class="nav-section">
+            <span class="nav-section-title">AI Tools</span>
+            <a href="/user/ai-workspace.php" class="nav-item <?= $activePage === 'ai_workspace' ? 'active' : '' ?>">
+                <span class="nav-icon">🤖</span><span class="nav-label">AI Workspace</span>
+            </a>
+            <a href="/user/email-editor.php" class="nav-item <?= $activePage === 'email_editor' ? 'active' : '' ?>">
+                <span class="nav-icon">✏️</span><span class="nav-label">Email Editor</span>
+            </a>
+        </div>
+
+        <div class="nav-section">
             <span class="nav-section-title">Settings</span>
             <a href="/user/settings.php" class="nav-item <?= $activePage === 'settings' ? 'active' : '' ?>">
                 <span class="nav-icon">⚙️</span><span class="nav-label">Email Settings</span>
@@ -86,6 +96,9 @@ $isSuperAdmin = ($user['role'] ?? '') === 'superadmin';
 
         <div class="nav-section">
             <span class="nav-section-title">Admin — Settings</span>
+            <a href="/admin/ai-settings.php" class="nav-item <?= $activePage === 'ai_settings' ? 'active' : '' ?>">
+                <span class="nav-icon">🤖</span><span class="nav-label">AI Settings</span>
+            </a>
             <a href="/admin/smtp.php" class="nav-item <?= $activePage === 'smtp' ? 'active' : '' ?>">
                 <span class="nav-icon">⚙️</span><span class="nav-label">SMTP &amp; APIs</span>
             </a>
@@ -106,6 +119,22 @@ $isSuperAdmin = ($user['role'] ?? '') === 'superadmin';
     </nav>
 
     <div class="sidebar-footer">
+        <?php
+        // Load AI token balance for sidebar display
+        $sidebarAiBalance = 0;
+        try {
+            $db_sidebar = getDB();
+            $sidebarStmt = $db_sidebar->prepare("SELECT balance FROM user_ai_tokens WHERE user_id=?");
+            $sidebarStmt->execute([(int)($user['id'] ?? 0)]);
+            $sidebarAiBalance = (int)($sidebarStmt->fetchColumn() ?: 0);
+        } catch (\Exception $e) {}
+        ?>
+        <?php if ($sidebarAiBalance > 0 || !$isAdmin): ?>
+        <a href="/billing.php?tab=ai_tokens" style="display:flex;align-items:center;gap:.5rem;padding:.4rem .75rem;margin-bottom:.5rem;background:rgba(108,99,255,.12);border:1px solid rgba(108,99,255,.25);border-radius:10px;text-decoration:none;color:#a78bfa;font-size:.8rem">
+            <span>🤖</span>
+            <span><?= number_format($sidebarAiBalance) ?> AI Tokens</span>
+        </a>
+        <?php endif; ?>
         <div class="user-info">
             <span class="user-avatar"><?= strtoupper(substr($user['username'] ?? 'U', 0, 1)) ?></span>
             <div>

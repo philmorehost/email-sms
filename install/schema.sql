@@ -425,7 +425,12 @@ INSERT INTO app_settings (setting_key, setting_value) VALUES
     ('plisio_enabled', '0'),
     ('plisio_fee_percent', '0.5'),
     -- Hidden FX markup for USD gateways (admin only, N0-N100)
-    ('fx_markup_ngn', '0')
+    ('fx_markup_ngn', '0'),
+    -- DeepSeek AI integration
+    ('deepseek_api_key', ''),
+    ('deepseek_model', 'deepseek-chat'),
+    ('ai_tokens_per_generation', '50'),
+    ('ai_tokens_per_chat_1k', '10')
 ON DUPLICATE KEY UPDATE setting_key = setting_key;
 
 -- Wallet Deposits (all deposit methods)
@@ -475,6 +480,39 @@ CREATE TABLE IF NOT EXISTS email_verification_otps (
     used BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_email_otp (email, otp_code)
+);
+
+-- AI Token Packages (admin-created credit packages for AI features)
+CREATE TABLE IF NOT EXISTS ai_token_packages (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    tokens INT NOT NULL,
+    price DECIMAL(10,2) NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Per-user AI Token Balance
+CREATE TABLE IF NOT EXISTS user_ai_tokens (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL UNIQUE,
+    balance INT NOT NULL DEFAULT 0,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_uat_user (user_id)
+);
+
+-- AI Token Ledger (audit log of every deduction and purchase)
+CREATE TABLE IF NOT EXISTS ai_token_ledger (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    delta INT NOT NULL,
+    action ENUM('purchase','generate','chat','refund','admin_grant') NOT NULL,
+    template_id INT NULL,
+    campaign_id INT NULL,
+    description VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_atl_user (user_id),
+    INDEX idx_atl_action (action)
 );
 
 -- Per-user email server settings (for special email plan subscribers)
