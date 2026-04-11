@@ -328,6 +328,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         redirect('/billing.php?tab=ai_tokens');
     }
+
+    // ── Buy Social token package with wallet balance ──────────────────────────
+    if ($action === 'buy_social_tokens') {
+        require_once __DIR__ . '/includes/social.php';
+        AyrshareClient::migrate($db);
+        $packageId = (int)($_POST['package_id'] ?? 0);
+        if ($packageId <= 0) { setFlash('Please select a valid package.', 'error'); redirect('/billing.php?tab=social_tokens'); }
+        try {
+            $db->beginTransaction();
+
+            $pkgStmt = $db->prepare("SELECT * FROM social_token_packages WHERE id=? AND is_active=1");
+            $pkgStmt->execute([$packageId]);
+            $pkg = $pkgStmt->fetch();
+            if (!$pkg) { $db->rollBack(); setFlash('Package not found or inactive.', 'error'); redirect('/billing.php?tab=social_tokens'); }
+
+            $wStmt = $db->prepare("SELECT credits FROM user_sms_wallet WHERE user_id=? FOR UPDATE");
+            $wStmt->execute([$userId]);
+            $currentBalance = (float)($wStmt->fetchColumn() ?: 0.0);
+            $price  = (float)$pkg['price'];
+            $tokens = (int)$pkg['tokens'];
+
+            if ($currentBalance < $price) {
+                $db->rollBack();
+                setFlash('Insufficient wallet balance. Please deposit funds first.', 'error');
+                redirect('/billing.php?tab=social_tokens');
+            }
+
+            $ref = 'SOC-' . strtoupper(bin2hex(random_bytes(5)));
+
+            // Deduct from wallet
+            $db->prepare("UPDATE user_sms_wallet SET credits=credits-?, updated_at=NOW() WHERE user_id=?")
+               ->execute([$price, $userId]);
+            $db->prepare("INSERT INTO sms_credit_transactions (user_id,amount,type,description,reference) VALUES(?,?,'debit',?,?)")
+               ->execute([$userId, $price, 'Social Tokens: ' . $pkg['name'], $ref]);
+
+            // Credit social tokens
+            AyrshareClient::addTokens($db, $userId, $tokens, 'purchase', 'Purchase: ' . $pkg['name'] . ' (' . $ref . ')');
+
+            $db->commit();
+            setFlash('Successfully purchased ' . number_format($tokens) . ' social tokens for ' . currencySymbol() . number_format($price, 2) . '!');
+        } catch (\Exception $e) {
+            if ($db->inTransaction()) $db->rollBack();
+            error_log('buy_social_tokens: ' . $e->getMessage());
+            setFlash('Error processing purchase. Please try again.', 'error');
+        }
+        redirect('/billing.php?tab=social_tokens');
+    }
 }
 
 $flash     = popFlash();
@@ -464,6 +511,30 @@ try {
     $aiLedger = $aiLedger->fetchAll();
 } catch (\Exception $e) {}
 
+// ── Social Tokens ─────────────────────────────────────────────────────────────
+require_once __DIR__ . '/includes/social.php';
+AyrshareClient::migrate($db);
+$socSettings       = AyrshareClient::loadSettings($db);
+$socialEnabled     = ($socSettings['social_enabled'] ?? '0') === '1';
+$socialBalance     = 0;
+$socialPackages    = [];
+$socialLedger      = [];
+if ($socialEnabled) {
+    try {
+        $sbStmt = $db->prepare("SELECT balance FROM user_social_tokens WHERE user_id=?");
+        $sbStmt->execute([$userId]);
+        $socialBalance = (int)($sbStmt->fetchColumn() ?: 0);
+    } catch (\Exception $e) {}
+    try {
+        $socialPackages = $db->query("SELECT * FROM social_token_packages WHERE is_active=1 ORDER BY price ASC")->fetchAll();
+    } catch (\Exception $e) {}
+    try {
+        $slStmt = $db->prepare("SELECT * FROM social_credit_transactions WHERE user_id=? ORDER BY created_at DESC LIMIT 20");
+        $slStmt->execute([$userId]);
+        $socialLedger = $slStmt->fetchAll();
+    } catch (\Exception $e) {}
+}
+
 $pageTitle  = 'Credits & Subscriptions';
 $activePage = 'billing';
 require_once __DIR__ . '/includes/layout_header.php';
@@ -544,6 +615,9 @@ require_once __DIR__ . '/includes/layout_header.php';
     <a href="/billing.php?tab=wallet"       class="tab-btn <?= $activeTab === 'wallet'       ? 'active' : '' ?>">💼 SMS Wallet</a>
     <a href="/billing.php?tab=email_plans"  class="tab-btn <?= $activeTab === 'email_plans'  ? 'active' : '' ?>">📧 Email Plans</a>
     <a href="/billing.php?tab=ai_tokens"    class="tab-btn <?= $activeTab === 'ai_tokens'    ? 'active' : '' ?>">🤖 AI Tokens</a>
+    <?php if ($socialEnabled): ?>
+    <a href="/billing.php?tab=social_tokens" class="tab-btn <?= $activeTab === 'social_tokens' ? 'active' : '' ?>">📱 Social Tokens</a>
+    <?php endif; ?>
     <a href="/billing.php?tab=transactions" class="tab-btn <?= $activeTab === 'transactions' ? 'active' : '' ?>">📊 Transactions</a>
 </div>
 
@@ -827,6 +901,101 @@ require_once __DIR__ . '/includes/layout_header.php';
     <?php endif; ?>
 
 </div>
+
+<!-- ── SOCIAL TOKENS TAB ─────────────────────────────────────────────────── -->
+<?php if ($socialEnabled): ?>
+<div class="tab-pane <?= $activeTab === 'social_tokens' ? 'active' : '' ?>">
+
+    <!-- Balance hero -->
+    <div class="wallet-hero" style="background:linear-gradient(135deg,#10b981,#059669);text-align:left;padding:1.75rem 2rem;margin-bottom:1.5rem;border-radius:16px">
+        <div style="font-size:.8rem;opacity:.75;text-transform:uppercase;letter-spacing:.06em;margin-bottom:.25rem">📱 Social Token Balance</div>
+        <div style="font-size:3rem;font-weight:800;line-height:1"><?= number_format($socialBalance) ?></div>
+        <div style="opacity:.8;margin-top:.4rem;font-size:.9rem">tokens available for social media posting</div>
+    </div>
+
+    <!-- Token cost reference -->
+    <div class="card" style="margin-bottom:1.5rem">
+        <div class="card-body" style="display:flex;flex-wrap:wrap;gap:1rem">
+            <div style="flex:1;min-width:140px;text-align:center;padding:.75rem;background:rgba(16,185,129,.1);border-radius:10px">
+                <div style="font-size:1.5rem;font-weight:700;color:#10b981"><?= (int)($socSettings['social_tokens_per_post_now']??1) ?></div>
+                <div style="font-size:.8rem;color:var(--text-muted)">Post Now</div>
+            </div>
+            <div style="flex:1;min-width:140px;text-align:center;padding:.75rem;background:rgba(245,158,11,.1);border-radius:10px">
+                <div style="font-size:1.5rem;font-weight:700;color:#f59e0b"><?= (int)($socSettings['social_tokens_per_scheduled_post']??5) ?></div>
+                <div style="font-size:.8rem;color:var(--text-muted)">Scheduled Post</div>
+            </div>
+            <div style="flex:1;min-width:140px;text-align:center;padding:.75rem;background:rgba(6,182,212,.1);border-radius:10px">
+                <div style="font-size:1.5rem;font-weight:700;color:#06b6d4"><?= (int)($socSettings['social_tokens_per_ab_variant']??2) ?></div>
+                <div style="font-size:.8rem;color:var(--text-muted)">A/B Variant</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Buy packages -->
+    <?php if (empty($socialPackages)): ?>
+    <div class="card">
+        <div class="card-body" style="text-align:center;padding:2.5rem;color:var(--text-muted)">
+            <p>No social token packages available. Please check back later.</p>
+        </div>
+    </div>
+    <?php else: ?>
+    <h3 style="margin-bottom:1rem">Buy Social Tokens</h3>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:1.25rem;margin-bottom:1.5rem">
+        <?php $popularSocIdx = count($socialPackages) > 1 ? (int)floor(count($socialPackages)/2) : -1; ?>
+        <?php foreach ($socialPackages as $idx => $sp): ?>
+        <div class="card" style="position:relative;<?= $idx===$popularSocIdx ? 'border:2px solid #10b981' : '' ?>">
+            <?php if ($idx===$popularSocIdx): ?>
+            <div style="position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:#10b981;color:#fff;padding:2px 12px;border-radius:10px;font-size:.75rem;font-weight:700;white-space:nowrap">⭐ Popular</div>
+            <?php endif; ?>
+            <div class="card-body" style="text-align:center;padding:1.5rem">
+                <div style="font-size:1rem;font-weight:600;margin-bottom:.25rem"><?= htmlspecialchars($sp['name']) ?></div>
+                <div style="font-size:2.5rem;font-weight:800;color:#10b981;line-height:1"><?= number_format((int)$sp['tokens']) ?></div>
+                <div style="font-size:.8rem;color:var(--text-muted);margin-bottom:1rem">social tokens</div>
+                <div style="font-size:1.4rem;font-weight:700;margin-bottom:1.25rem"><?= htmlspecialchars(currencySymbol()) ?><?= number_format((float)$sp['price'],2) ?></div>
+                <form method="POST">
+                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken()) ?>">
+                    <input type="hidden" name="action"     value="buy_social_tokens">
+                    <input type="hidden" name="package_id" value="<?= (int)$sp['id'] ?>">
+                    <button type="submit" class="btn btn-primary" style="width:100%">Buy Now</button>
+                </form>
+            </div>
+        </div>
+        <?php endforeach; ?>
+    </div>
+    <?php endif; ?>
+
+    <!-- Usage ledger -->
+    <?php if (!empty($socialLedger)): ?>
+    <div class="card">
+        <div class="card-header"><h3>📋 Recent Social Token Activity</h3></div>
+        <div class="table-responsive">
+        <table class="table">
+            <thead><tr><th>Date</th><th>Action</th><th>Tokens</th><th>Description</th></tr></thead>
+            <tbody>
+            <?php
+            $scColors=['purchase'=>'#10b981','post_now'=>'#6c63ff','scheduled_post'=>'#f59e0b','ab_variant'=>'#06b6d4','refund'=>'#06b6d4','admin_grant'=>'#8b5cf6'];
+            foreach ($socialLedger as $sl): ?>
+            <tr>
+                <td style="font-size:.82rem"><?= timeAgo($sl['created_at']) ?></td>
+                <td>
+                    <span style="background:<?= ($scColors[$sl['action']]??'#666') ?>22;color:<?= $scColors[$sl['action']]??'#aaa' ?>;padding:2px 8px;border-radius:6px;font-size:.8rem">
+                        <?= htmlspecialchars($sl['action']) ?>
+                    </span>
+                </td>
+                <td style="color:<?= $sl['delta']>0?'var(--success,#10b981)':'var(--danger,#ef4444)' ?>;font-weight:600">
+                    <?= $sl['delta']>0?'+':'' ?><?= number_format((int)$sl['delta']) ?>
+                </td>
+                <td style="font-size:.85rem"><?= htmlspecialchars($sl['description']??'') ?></td>
+            </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        </div>
+    </div>
+    <?php endif; ?>
+
+</div>
+<?php endif; ?>
 
 <!-- ── TRANSACTIONS TAB ───────────────────────────────────────────────────── -->
 <div class="tab-pane <?= $activeTab === 'transactions' ? 'active' : '' ?>">

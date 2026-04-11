@@ -535,3 +535,87 @@ CREATE TABLE IF NOT EXISTS user_smtp_settings (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_uss_user (user_id)
 );
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- AI-Driven Social Media Marketing Tables
+-- ─────────────────────────────────────────────────────────────────────────────
+
+-- Per-user Ayrshare profile link
+CREATE TABLE IF NOT EXISTS social_connections (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL UNIQUE,
+    ayrshare_profile_key VARCHAR(255) NOT NULL,
+    platforms_json JSON,
+    follower_activity_json JSON,
+    activity_updated_at TIMESTAMP NULL,
+    connected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_sc_user (user_id)
+);
+
+-- Social media campaigns
+CREATE TABLE IF NOT EXISTS social_campaigns (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    platform_mask VARCHAR(255) NOT NULL DEFAULT '',
+    caption TEXT,
+    hashtags TEXT,
+    image_url VARCHAR(500),
+    status ENUM('draft','scheduled','posting','posted','failed') DEFAULT 'draft',
+    scheduled_at DATETIME NULL,
+    posted_at DATETIME NULL,
+    ayrshare_post_id VARCHAR(255) NULL,
+    analytics_json JSON,
+    analytics_updated_at TIMESTAMP NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_soc_user (user_id),
+    INDEX idx_soc_status (status),
+    INDEX idx_soc_scheduled (scheduled_at)
+);
+
+-- Social token packages (purchasable bundles)
+CREATE TABLE IF NOT EXISTS social_token_packages (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    tokens INT NOT NULL,
+    price DECIMAL(10,2) NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Per-user social token balance
+CREATE TABLE IF NOT EXISTS user_social_tokens (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL UNIQUE,
+    balance INT NOT NULL DEFAULT 0,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_ust_user (user_id)
+);
+
+-- Social token ledger
+CREATE TABLE IF NOT EXISTS social_credit_transactions (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    delta INT NOT NULL,
+    action ENUM('purchase','post_now','scheduled_post','ab_variant','refund','admin_grant') NOT NULL DEFAULT 'post_now',
+    campaign_id INT NULL,
+    description VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_sct_user (user_id),
+    INDEX idx_sct_action (action)
+);
+
+-- Analytics cache
+CREATE TABLE IF NOT EXISTS social_analytics_cache (
+    campaign_id INT PRIMARY KEY,
+    analytics_json JSON,
+    cached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- App settings for social feature
+INSERT INTO app_settings (setting_key, setting_value) VALUES
+    ('ayrshare_api_key', ''),
+    ('social_enabled', '0'),
+    ('social_tokens_per_post_now', '1'),
+    ('social_tokens_per_scheduled_post', '5'),
+    ('social_tokens_per_ab_variant', '2')
+ON DUPLICATE KEY UPDATE setting_key = setting_key;

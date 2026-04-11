@@ -55,6 +55,19 @@ $isSuperAdmin = ($user['role'] ?? '') === 'superadmin';
             <a href="/user/email-editor.php" class="nav-item <?= $activePage === 'email_editor' ? 'active' : '' ?>">
                 <span class="nav-icon">✏️</span><span class="nav-label">Email Editor</span>
             </a>
+            <?php
+            $socialNavEnabled = false;
+            try {
+                $snStmt = getDB()->prepare("SELECT setting_value FROM app_settings WHERE setting_key='social_enabled'");
+                $snStmt->execute();
+                $socialNavEnabled = ($snStmt->fetchColumn() ?: '0') === '1';
+            } catch (\Exception $e) {}
+            if ($socialNavEnabled):
+            ?>
+            <a href="/user/social.php" class="nav-item <?= $activePage === 'social' ? 'active' : '' ?>">
+                <span class="nav-icon">📱</span><span class="nav-label">Social Media</span>
+            </a>
+            <?php endif; ?>
         </div>
 
         <div class="nav-section">
@@ -99,6 +112,9 @@ $isSuperAdmin = ($user['role'] ?? '') === 'superadmin';
             <a href="/admin/ai-settings.php" class="nav-item <?= $activePage === 'ai_settings' ? 'active' : '' ?>">
                 <span class="nav-icon">🤖</span><span class="nav-label">AI Settings</span>
             </a>
+            <a href="/admin/social-settings.php" class="nav-item <?= $activePage === 'social_settings' ? 'active' : '' ?>">
+                <span class="nav-icon">📱</span><span class="nav-label">Social Media</span>
+            </a>
             <a href="/admin/smtp.php" class="nav-item <?= $activePage === 'smtp' ? 'active' : '' ?>">
                 <span class="nav-icon">⚙️</span><span class="nav-label">SMTP &amp; APIs</span>
             </a>
@@ -128,11 +144,30 @@ $isSuperAdmin = ($user['role'] ?? '') === 'superadmin';
             $sidebarStmt->execute([(int)($user['id'] ?? 0)]);
             $sidebarAiBalance = (int)($sidebarStmt->fetchColumn() ?: 0);
         } catch (\Exception $e) {}
+        // Load Social token balance for sidebar
+        $sidebarSocBalance = 0;
+        $sidebarSocEnabled = false;
+        try {
+            $socEnabledStmt = $db_sidebar->prepare("SELECT setting_value FROM app_settings WHERE setting_key='social_enabled'");
+            $socEnabledStmt->execute();
+            $sidebarSocEnabled = ($socEnabledStmt->fetchColumn() ?: '0') === '1';
+            if ($sidebarSocEnabled) {
+                $socBalStmt = $db_sidebar->prepare("SELECT balance FROM user_social_tokens WHERE user_id=?");
+                $socBalStmt->execute([(int)($user['id'] ?? 0)]);
+                $sidebarSocBalance = (int)($socBalStmt->fetchColumn() ?: 0);
+            }
+        } catch (\Exception $e) {}
         ?>
         <?php if ($sidebarAiBalance > 0 || !$isAdmin): ?>
         <a href="/billing.php?tab=ai_tokens" style="display:flex;align-items:center;gap:.5rem;padding:.4rem .75rem;margin-bottom:.5rem;background:rgba(108,99,255,.12);border:1px solid rgba(108,99,255,.25);border-radius:10px;text-decoration:none;color:#a78bfa;font-size:.8rem">
             <span>🤖</span>
             <span><?= number_format($sidebarAiBalance) ?> AI Tokens</span>
+        </a>
+        <?php endif; ?>
+        <?php if ($sidebarSocEnabled && ($sidebarSocBalance > 0 || !$isAdmin)): ?>
+        <a href="/billing.php?tab=social_tokens" style="display:flex;align-items:center;gap:.5rem;padding:.4rem .75rem;margin-bottom:.5rem;background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.25);border-radius:10px;text-decoration:none;color:#34d399;font-size:.8rem">
+            <span>📱</span>
+            <span><?= number_format($sidebarSocBalance) ?> Social Tokens</span>
         </a>
         <?php endif; ?>
         <div class="user-info">
