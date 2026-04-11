@@ -151,10 +151,47 @@ function redirect(string $url): never {
     exit;
 }
 
+/**
+ * Return the currency symbol configured by admin (default: ₦).
+ */
+function currencySymbol(): string {
+    static $sym = null;
+    if ($sym !== null) return $sym;
+    try {
+        $db  = getDB();
+        $row = $db->query("SELECT setting_value FROM app_settings WHERE setting_key='currency_symbol'")->fetch();
+        $sym = ($row && $row['setting_value'] !== '') ? $row['setting_value'] : '₦';
+    } catch (\Exception $e) {
+        $sym = '₦';
+    }
+    return $sym;
+}
+
+/**
+ * Format a monetary amount with the configured currency symbol.
+ */
+function formatMoney(float $amount, int $decimals = 2): string {
+    return currencySymbol() . number_format($amount, $decimals);
+}
+
 function setSecurityHeaders(): void {
     header('X-Frame-Options: DENY');
     header('X-XSS-Protection: 1; mode=block');
     header('X-Content-Type-Options: nosniff');
     header('Referrer-Policy: strict-origin-when-cross-origin');
-    header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:;");
+    // Allow scripts/frames from payment gateway CDNs
+    header(
+        "Content-Security-Policy: " .
+        "default-src 'self'; " .
+        "script-src 'self' 'unsafe-inline' " .
+            "https://js.stripe.com " .
+            "https://www.paypal.com " .
+            "https://checkout.flutterwave.com " .
+            "https://payhub.datagifting.com.ng; " .
+        "style-src 'self' 'unsafe-inline'; " .
+        "img-src 'self' data: https:; " .
+        "font-src 'self' data:; " .
+        "frame-src https://js.stripe.com https://hooks.stripe.com https://www.paypal.com; " .
+        "connect-src 'self' https://api.stripe.com https://www.paypal.com https://api-m.paypal.com https://api-m.sandbox.paypal.com;"
+    );
 }

@@ -7,9 +7,38 @@ require_once __DIR__ . '/helpers.php';
 class Mailer {
     private array $settings = [];
 
-    public function __construct() {
+    public function __construct(int $userId = 0) {
         try {
             $db = getDB();
+            // Try per-user SMTP settings first (special plan users)
+            if ($userId > 0) {
+                $ustmt = $db->prepare(
+                    "SELECT * FROM user_smtp_settings WHERE user_id = ? AND is_active = 1 LIMIT 1"
+                );
+                $ustmt->execute([$userId]);
+                $userSettings = $ustmt->fetch();
+                if ($userSettings) {
+                    // Map user SMTP record to the same key format as smtp_settings
+                    $provider = $userSettings['provider'];
+                    $mapped   = [
+                        'provider'              => $provider,
+                        'from_email'            => $userSettings['from_email'] ?? '',
+                        'from_name'             => $userSettings['from_name'] ?? '',
+                        'host'                  => $userSettings['smtp_host'] ?? '',
+                        'port'                  => $userSettings['smtp_port'] ?? 587,
+                        'username'              => $userSettings['smtp_username'] ?? '',
+                        'password_encrypted'    => $userSettings['smtp_password_enc'] ?? '',
+                        'encryption'            => $userSettings['smtp_encryption'] ?? 'tls',
+                    ];
+                    // For API-key providers, put the encrypted key under the provider-specific field
+                    if (!empty($userSettings['api_key_enc'])) {
+                        $mapped[$provider . '_api_key_encrypted'] = $userSettings['api_key_enc'];
+                    }
+                    $this->settings = $mapped;
+                    return;
+                }
+            }
+            // Fall back to system-wide SMTP settings
             $stmt = $db->prepare("SELECT * FROM smtp_settings WHERE id = 1");
             $stmt->execute();
             $this->settings = $stmt->fetch() ?: [];
@@ -24,6 +53,11 @@ class Mailer {
             case 'sendgrid': return $this->sendViaSendGrid($to, $subject, $htmlBody, $textBody);
             case 'mailgun':  return $this->sendViaMailgun($to, $subject, $htmlBody, $textBody);
             case 'ses':      return $this->sendViaSES($to, $subject, $htmlBody, $textBody);
+            case 'resend':   return $this->sendViaResend($to, $subject, $htmlBody, $textBody);
+            case 'postmark': return $this->sendViaPostmark($to, $subject, $htmlBody, $textBody);
+            case 'brevo':    return $this->sendViaBrevo($to, $subject, $htmlBody, $textBody);
+            case 'mailjet':  return $this->sendViaMailjet($to, $subject, $htmlBody, $textBody);
+            case 'aweber':   return $this->sendViaAWeber($to, $subject, $htmlBody, $textBody);
             default:         return $this->sendViaSMTP($to, $subject, $htmlBody, $textBody);
         }
     }
@@ -306,5 +340,211 @@ class Mailer {
         curl_close($ch);
 
         return $httpCode === 200;
+    }
+
+    private function sendViaResend(array $to, string $subject, string $htmlBody, string $textBody = ''): bool {
+        $apiKey = '';
+        if (!empty($this->settings['resend_api_key_encrypted']) && defined('APP_KEY')) {
+            $apiKey = decryptData($this->settings['resend_api_key_encrypted'], APP_KEY);
+        }
+        if (empty($apiKey)) return false;
+
+        $toEmails = [];
+        foreach ($to as $recipient) {
+            $toEmails[] = is_array($recipient) ? $recipient['email'] : $recipient;
+        }
+
+        $fromName  = $this->settings['from_name'] ?? '';
+        $fromEmail = $this->settings['from_email'] ?? '';
+        $fromAddr  = $fromName !== '' ? "{$fromName} <{$fromEmail}>" : $fromEmail;
+
+        $payload = [
+            'from'    => $fromAddr,
+            'to'      => $toEmails,
+            'subject' => $subject,
+            'html'    => $htmlBody,
+            'text'    => $textBody ?: strip_tags($htmlBody),
+        ];
+
+        $ch = curl_init('https://api.resend.com/emails');
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => json_encode($payload),
+            CURLOPT_HTTPHEADER     => [
+                'Authorization: Bearer ' . $apiKey,
+                'Content-Type: application/json',
+            ],
+        ]);
+        curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        return $httpCode === 200 || $httpCode === 201;
+    }
+
+    private function sendViaPostmark(array $to, string $subject, string $htmlBody, string $textBody = ''): bool {
+        $apiKey = '';
+        if (!empty($this->settings['postmark_api_key_encrypted']) && defined('APP_KEY')) {
+            $apiKey = decryptData($this->settings['postmark_api_key_encrypted'], APP_KEY);
+        }
+        if (empty($apiKey)) return false;
+
+        $toList = [];
+        foreach ($to as $recipient) {
+            $toList[] = is_array($recipient) ? $recipient['email'] : $recipient;
+        }
+
+        $fromName  = $this->settings['from_name'] ?? '';
+        $fromEmail = $this->settings['from_email'] ?? '';
+        $fromAddr  = $fromName !== '' ? "{$fromName} <{$fromEmail}>" : $fromEmail;
+
+        $payload = [
+            'From'          => $fromAddr,
+            'To'            => implode(',', $toList),
+            'Subject'       => $subject,
+            'HtmlBody'      => $htmlBody,
+            'TextBody'      => $textBody ?: strip_tags($htmlBody),
+            'MessageStream' => 'outbound',
+        ];
+
+        $ch = curl_init('https://api.postmarkapp.com/email');
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => json_encode($payload),
+            CURLOPT_HTTPHEADER     => [
+                'X-Postmark-Server-Token: ' . $apiKey,
+                'Content-Type: application/json',
+                'Accept: application/json',
+            ],
+        ]);
+        curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        return $httpCode === 200;
+    }
+
+    private function sendViaBrevo(array $to, string $subject, string $htmlBody, string $textBody = ''): bool {
+        $apiKey = '';
+        if (!empty($this->settings['brevo_api_key_encrypted']) && defined('APP_KEY')) {
+            $apiKey = decryptData($this->settings['brevo_api_key_encrypted'], APP_KEY);
+        }
+        if (empty($apiKey)) return false;
+
+        $toList = [];
+        foreach ($to as $recipient) {
+            if (is_array($recipient)) {
+                $toList[] = ['email' => $recipient['email'], 'name' => $recipient['name'] ?? ''];
+            } else {
+                $toList[] = ['email' => $recipient];
+            }
+        }
+
+        $payload = [
+            'sender'      => ['name' => $this->settings['from_name'] ?? '', 'email' => $this->settings['from_email'] ?? ''],
+            'to'          => $toList,
+            'subject'     => $subject,
+            'htmlContent' => $htmlBody,
+            'textContent' => $textBody ?: strip_tags($htmlBody),
+        ];
+
+        $ch = curl_init('https://api.brevo.com/v3/smtp/email');
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => json_encode($payload),
+            CURLOPT_HTTPHEADER     => [
+                'api-key: ' . $apiKey,
+                'Content-Type: application/json',
+                'Accept: application/json',
+            ],
+        ]);
+        curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        return $httpCode === 201;
+    }
+
+    private function sendViaMailjet(array $to, string $subject, string $htmlBody, string $textBody = ''): bool {
+        $apiKey    = '';
+        $secretKey = '';
+        if (!empty($this->settings['mailjet_api_key_encrypted']) && defined('APP_KEY')) {
+            $apiKey = decryptData($this->settings['mailjet_api_key_encrypted'], APP_KEY);
+        }
+        if (!empty($this->settings['mailjet_secret_key_encrypted']) && defined('APP_KEY')) {
+            $secretKey = decryptData($this->settings['mailjet_secret_key_encrypted'], APP_KEY);
+        }
+        if (empty($apiKey) || empty($secretKey)) return false;
+
+        $toList = [];
+        foreach ($to as $recipient) {
+            if (is_array($recipient)) {
+                $toList[] = ['Email' => $recipient['email'], 'Name' => $recipient['name'] ?? ''];
+            } else {
+                $toList[] = ['Email' => $recipient];
+            }
+        }
+
+        $payload = [
+            'Messages' => [[
+                'From'     => ['Email' => $this->settings['from_email'] ?? '', 'Name' => $this->settings['from_name'] ?? ''],
+                'To'       => $toList,
+                'Subject'  => $subject,
+                'HTMLPart' => $htmlBody,
+                'TextPart' => $textBody ?: strip_tags($htmlBody),
+            ]],
+        ];
+
+        $ch = curl_init('https://api.mailjet.com/v3.1/send');
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST           => true,
+            CURLOPT_USERPWD        => $apiKey . ':' . $secretKey,
+            CURLOPT_POSTFIELDS     => json_encode($payload),
+            CURLOPT_HTTPHEADER     => [
+                'Content-Type: application/json',
+            ],
+        ]);
+        curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        return $httpCode === 200;
+    }
+
+    private function sendViaAWeber(array $to, string $subject, string $htmlBody, string $textBody = ''): bool {
+        $accessToken = '';
+        $accountId   = $this->settings['aweber_account_id'] ?? '';
+        $listId      = $this->settings['aweber_list_id'] ?? '';
+        if (!empty($this->settings['aweber_access_token_encrypted']) && defined('APP_KEY')) {
+            $accessToken = decryptData($this->settings['aweber_access_token_encrypted'], APP_KEY);
+        }
+        if (empty($accessToken) || empty($accountId) || empty($listId)) return false;
+
+        $payload = [
+            'subject'   => $subject,
+            'body_html' => $htmlBody,
+            'body_text' => $textBody ?: strip_tags($htmlBody),
+        ];
+
+        $url = "https://api.aweber.com/1.0/accounts/{$accountId}/lists/{$listId}/broadcasts";
+        $ch  = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => json_encode($payload),
+            CURLOPT_HTTPHEADER     => [
+                'Authorization: Bearer ' . $accessToken,
+                'Content-Type: application/json',
+            ],
+        ]);
+        curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        return $httpCode === 201;
     }
 }

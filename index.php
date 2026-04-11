@@ -9,11 +9,640 @@ if (!file_exists($lockFile) || !file_exists($configFile)) {
     exit;
 }
 
-require_once __DIR__ . '/includes/auth.php';
+// Fetch public-facing data (SMS price, packages, email plans) — gracefully fallback if DB unavailable
+$smsUnitPrice = 6.50;
+$packages     = [];
+$emailPlans   = [];
+$appName      = 'PhilmoreHost';
+$currSym      = '₦';
 
-if (isLoggedIn()) {
-    header('Location: /dashboard.php');
-} else {
-    header('Location: /login.php');
+try {
+    require_once __DIR__ . '/config/config.php';
+    require_once __DIR__ . '/includes/db.php';
+    if (defined('APP_NAME')) $appName = APP_NAME;
+    $db = getDB();
+    $row = $db->query("SELECT setting_value FROM app_settings WHERE setting_key = 'sms_price_per_unit'")->fetch();
+    if ($row) $smsUnitPrice = (float)$row['setting_value'];
+    $symRow = $db->query("SELECT setting_value FROM app_settings WHERE setting_key = 'currency_symbol'")->fetch();
+    if ($symRow && $symRow['setting_value'] !== '') $currSym = $symRow['setting_value'];
+    $packages   = $db->query("SELECT * FROM sms_credit_packages WHERE is_active = 1 ORDER BY price ASC")->fetchAll();
+    $emailPlans = $db->query("SELECT * FROM email_plans WHERE is_active = 1 ORDER BY price ASC")->fetchAll();
+} catch (\Exception $e) {}
+
+$theme = $_COOKIE['theme'] ?? 'dark';
+?>
+<!DOCTYPE html>
+<html lang="en" data-theme="<?= htmlspecialchars($theme) ?>">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title><?= htmlspecialchars($appName) ?> — Bulk SMS &amp; Email Marketing Platform</title>
+<meta name="description" content="Send bulk SMS and email campaigns at scale. Competitive pricing, powerful features, and a robust API.">
+<link rel="stylesheet" href="/assets/css/style.css">
+<style>
+/* ─── Landing-specific overrides ───────────────────────────────── */
+body { display: block; }
+
+/* ── NAV ── */
+.lp-nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 200;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: .9rem 5%;
+    background: rgba(10,10,20,.85);
+    backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+    border-bottom: 1px solid rgba(255,255,255,.07);
+    transition: background .3s;
 }
-exit;
+.lp-nav-brand { font-size: 1.25rem; font-weight: 800;
+    background: linear-gradient(135deg, #6c63ff, #00d4ff);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.lp-nav-links { display: flex; gap: 2rem; align-items: center; }
+.lp-nav-links a { color: #b8b8cc; font-size: .9rem; transition: color .2s; }
+.lp-nav-links a:hover { color: #fff; }
+.lp-nav-actions { display: flex; gap: .75rem; align-items: center; }
+
+/* ── HERO ── */
+.hero {
+    min-height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+    text-align: center;
+    padding: 7rem 5% 5rem;
+    position: relative; overflow: hidden;
+}
+.hero::before {
+    content: '';
+    position: absolute; inset: 0;
+    background:
+        radial-gradient(ellipse 80% 60% at 50% 40%, rgba(108,99,255,.18) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 40% at 80% 80%, rgba(0,212,255,.1) 0%, transparent 50%);
+    pointer-events: none;
+}
+.hero-inner { max-width: 800px; position: relative; z-index: 1; }
+.hero-badge {
+    display: inline-flex; align-items: center; gap: .4rem;
+    background: rgba(108,99,255,.15); border: 1px solid rgba(108,99,255,.4);
+    color: #a78bfa; border-radius: 50px; padding: .3rem 1rem; font-size: .8rem; font-weight: 600;
+    margin-bottom: 1.75rem; letter-spacing: .04em;
+}
+.hero h1 {
+    font-size: clamp(2.5rem, 6vw, 4rem); font-weight: 900; line-height: 1.1;
+    margin-bottom: 1.25rem;
+    background: linear-gradient(135deg, #fff 0%, #a78bfa 50%, #00d4ff 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.hero p {
+    font-size: 1.1rem; color: #b8b8cc; max-width: 580px; margin: 0 auto 2.5rem; line-height: 1.7;
+}
+.hero-ctas { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+.hero-stats {
+    display: flex; gap: 3rem; justify-content: center; margin-top: 4rem;
+    flex-wrap: wrap;
+}
+.hero-stat strong { display: block; font-size: 2rem; font-weight: 800;
+    background: linear-gradient(135deg, #6c63ff, #00d4ff);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.hero-stat span { font-size: .85rem; color: #8888a8; }
+
+/* ── SECTION ── */
+.lp-section { padding: 6rem 5%; }
+.lp-section-alt { background: rgba(255,255,255,.02); border-top: 1px solid rgba(255,255,255,.05); border-bottom: 1px solid rgba(255,255,255,.05); }
+.section-label {
+    display: inline-block; font-size: .75rem; font-weight: 700; letter-spacing: .1em;
+    text-transform: uppercase; color: #6c63ff; margin-bottom: .75rem;
+}
+.section-title { font-size: clamp(1.75rem, 4vw, 2.5rem); font-weight: 800; margin-bottom: 1rem; }
+.section-sub { color: #b8b8cc; max-width: 580px; line-height: 1.7; margin-bottom: 3rem; }
+.section-center { text-align: center; }
+.section-center .section-sub { margin: 0 auto 3rem; }
+
+/* ── FEATURES ── */
+.features-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; }
+.feature-card {
+    background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08);
+    border-radius: 20px; padding: 2rem; transition: all .3s;
+    position: relative; overflow: hidden;
+}
+.feature-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, #6c63ff, #00d4ff); opacity: 0; transition: opacity .3s;
+}
+.feature-card:hover { transform: translateY(-6px); background: rgba(255,255,255,.07); border-color: rgba(108,99,255,.3); }
+.feature-card:hover::before { opacity: 1; }
+.feature-icon { font-size: 2.5rem; margin-bottom: 1rem; }
+.feature-card h3 { font-size: 1.1rem; font-weight: 700; margin-bottom: .5rem; }
+.feature-card p { color: #b8b8cc; font-size: .9rem; line-height: 1.6; }
+
+/* ── HOW IT WORKS ── */
+.steps-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 2rem; }
+.step { text-align: center; padding: 1.5rem; }
+.step-num {
+    width: 56px; height: 56px; border-radius: 50%;
+    background: linear-gradient(135deg, #6c63ff, #00d4ff);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.25rem; font-weight: 800; margin: 0 auto 1.25rem;
+    box-shadow: 0 0 30px rgba(108,99,255,.4);
+}
+.step h3 { font-size: 1rem; font-weight: 700; margin-bottom: .4rem; }
+.step p { color: #b8b8cc; font-size: .88rem; line-height: 1.6; }
+
+/* ── PRICING ── */
+.pricing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.5rem; max-width: 1100px; margin: 0 auto; }
+.pricing-card {
+    background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08);
+    border-radius: 24px; padding: 2rem; position: relative; overflow: hidden;
+    transition: all .3s;
+}
+.pricing-card.featured {
+    background: rgba(108,99,255,.12); border-color: rgba(108,99,255,.4);
+    box-shadow: 0 0 60px rgba(108,99,255,.2);
+}
+.pricing-card:hover { transform: translateY(-5px); }
+.pricing-badge {
+    position: absolute; top: -10px; left: 50%; transform: translateX(-50%);
+    background: linear-gradient(135deg, #6c63ff, #00d4ff);
+    color: #fff; font-size: .72rem; font-weight: 700; padding: .25rem 1rem;
+    border-radius: 50px; letter-spacing: .05em; white-space: nowrap;
+}
+.pricing-period { font-size: .75rem; text-transform: uppercase; letter-spacing: .08em; color: #6c63ff; font-weight: 700; margin-bottom: .75rem; }
+.pricing-name { font-size: 1.25rem; font-weight: 800; margin-bottom: .25rem; }
+.pricing-credits { font-size: 2.5rem; font-weight: 900; color: #6c63ff; line-height: 1; }
+.pricing-credits-label { font-size: .8rem; color: #8888a8; margin-bottom: .75rem; }
+.pricing-price { font-size: 1.8rem; font-weight: 800; margin-bottom: 1.5rem; }
+.pricing-price small { font-size: .9rem; font-weight: 400; color: #b8b8cc; }
+.pricing-features { list-style: none; margin-bottom: 1.75rem; }
+.pricing-features li { display: flex; align-items: center; gap: .6rem; padding: .4rem 0; font-size: .9rem; color: #c0c0d0; border-bottom: 1px solid rgba(255,255,255,.04); }
+.pricing-features li:last-child { border: none; }
+.pricing-features .check { color: #00ff88; }
+.pricing-unit { font-size: .8rem; color: #b8b8cc; text-align: center; margin-top: .5rem; }
+
+/* ── SMS CALC ── */
+.sms-calc-section { background: rgba(108,99,255,.06); border: 1px solid rgba(108,99,255,.15); border-radius: 24px; padding: 2.5rem; max-width: 760px; margin: 0 auto; }
+.calc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1rem; margin-top: 1.5rem; }
+.calc-item { background: rgba(255,255,255,.04); border-radius: 12px; padding: .9rem 1.2rem; text-align: center; }
+.calc-item strong { display: block; font-size: 1.25rem; color: #6c63ff; font-weight: 800; }
+.calc-item small { font-size: .78rem; color: #8888a8; }
+
+/* ── TESTIMONIALS / TRUST ── */
+.trust-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.5rem; }
+.trust-card {
+    background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08);
+    border-radius: 20px; padding: 1.75rem;
+}
+.trust-card p { color: #b8b8cc; font-size: .9rem; line-height: 1.7; margin-bottom: 1rem; font-style: italic; }
+.trust-author { display: flex; align-items: center; gap: .75rem; }
+.trust-avatar { width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, #6c63ff, #00d4ff); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: .9rem; }
+.trust-name { font-weight: 700; font-size: .9rem; }
+.trust-role { font-size: .78rem; color: #8888a8; }
+
+/* ── CTA SECTION ── */
+.cta-section {
+    padding: 6rem 5%; text-align: center;
+    background: radial-gradient(ellipse 80% 60% at 50% 50%, rgba(108,99,255,.15) 0%, transparent 70%);
+}
+.cta-section h2 { font-size: clamp(1.75rem, 4vw, 2.75rem); font-weight: 900; margin-bottom: 1rem; }
+.cta-section p { color: #b8b8cc; margin-bottom: 2.5rem; font-size: 1rem; }
+.cta-btns { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+
+/* ── FOOTER ── */
+.lp-footer {
+    background: rgba(5,5,12,.98); border-top: 1px solid rgba(255,255,255,.07);
+    padding: 3rem 5% 2rem;
+}
+.lp-footer-grid { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr; gap: 2rem; margin-bottom: 3rem; }
+@media (max-width: 700px) { .lp-footer-grid { grid-template-columns: 1fr 1fr; } }
+.lp-footer-brand strong {
+    font-size: 1.1rem; font-weight: 800;
+    background: linear-gradient(135deg, #6c63ff, #00d4ff);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    display: block; margin-bottom: .5rem;
+}
+.lp-footer-brand p { color: #8888a8; font-size: .85rem; line-height: 1.7; }
+.lp-footer h4 { font-size: .85rem; font-weight: 700; color: #b8b8cc; margin-bottom: 1rem; letter-spacing: .05em; text-transform: uppercase; }
+.lp-footer ul { list-style: none; }
+.lp-footer ul li { margin-bottom: .5rem; }
+.lp-footer ul li a { color: #8888a8; font-size: .85rem; transition: color .2s; }
+.lp-footer ul li a:hover { color: #a78bfa; }
+.lp-footer-bottom { border-top: 1px solid rgba(255,255,255,.05); padding-top: 1.5rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; }
+.lp-footer-bottom p { color: #8888a8; font-size: .82rem; }
+
+/* ── BUTTONS (landing overrides) ── */
+.btn-lg { padding: .875rem 2.25rem; font-size: 1rem; border-radius: 50px; }
+.btn-outline {
+    background: transparent; border: 1px solid rgba(255,255,255,.2); color: #e0e0e0;
+    padding: .75rem 1.75rem; border-radius: 50px; font-size: .9rem; cursor: pointer;
+    transition: all .2s; display: inline-block; font-weight: 600;
+}
+.btn-outline:hover { border-color: #6c63ff; color: #6c63ff; background: rgba(108,99,255,.08); }
+
+/* ── Mobile nav ── */
+@media (max-width: 640px) {
+    .lp-nav-links { display: none; }
+    .hero h1 { font-size: 2.2rem; }
+}
+/* ── Anchor offset for fixed nav ── */
+[id] { scroll-margin-top: 80px; }
+</style>
+</head>
+<body>
+
+<!-- ══ NAVBAR ═══════════════════════════════════════════════════════════════ -->
+<nav class="lp-nav">
+    <span class="lp-nav-brand">📧 <?= htmlspecialchars($appName) ?></span>
+    <div class="lp-nav-links">
+        <a href="#features">Features</a>
+        <a href="#how-it-works">How It Works</a>
+        <a href="#fair-billing">SMS Pricing</a>
+        <a href="#email-pricing">Email Plans</a>
+        <a href="#social">Social &amp; AI</a>
+        <a href="#contact">Contact</a>
+    </div>
+    <div class="lp-nav-actions">
+        <button class="btn-outline" id="themeToggle" style="padding:.45rem 1rem;font-size:.85rem">
+            <span id="themeIcon"><?= $theme === 'dark' ? '🌙' : '☀️' ?></span>
+        </button>
+        <a href="/login.php" class="btn-outline" style="padding:.55rem 1.25rem;font-size:.9rem">Login</a>
+        <a href="/register.php" class="btn btn-primary btn-lg" style="padding:.55rem 1.5rem;font-size:.9rem;border-radius:50px">Get Started</a>
+    </div>
+</nav>
+
+<!-- ══ HERO ══════════════════════════════════════════════════════════════════ -->
+<section class="hero">
+    <div class="hero-inner">
+        <div class="hero-badge">🚀 Omni-Channel Marketing Platform</div>
+        <h1>SMS · Email · Social Media<br>— Powered by AI</h1>
+        <p>Send bulk SMS, design beautiful email campaigns, and publish to every social media platform in one click. DeepSeek AI writes your copy, schedules posts at the perfect time, and tracks every engagement — all from one dashboard.</p>
+        <div class="hero-ctas">
+            <a href="/register.php" class="btn btn-primary btn-lg">Start Free Today</a>
+            <a href="#features" class="btn-outline btn-lg">Explore Features</a>
+        </div>
+        <div class="hero-stats">
+            <div class="hero-stat"><strong><?= $currSym ?><?= number_format($smsUnitPrice, 2) ?></strong><span>Per SMS Page</span></div>
+            <div class="hero-stat"><strong>7</strong><span>Social Platforms</span></div>
+            <div class="hero-stat"><strong>99.9%</strong><span>Uptime SLA</span></div>
+            <div class="hero-stat"><strong>AI</strong><span>Content Engine</span></div>
+        </div>
+    </div>
+</section>
+
+<!-- ══ FEATURES ══════════════════════════════════════════════════════════════ -->
+<section class="lp-section lp-section-alt" id="features">
+    <div style="max-width:1200px;margin:0 auto">
+        <div class="section-center">
+            <span class="section-label">Why Choose Us</span>
+            <h2 class="section-title">Everything You Need to<br>Run Winning Campaigns</h2>
+            <p class="section-sub">From bulk SMS to drip email sequences — one platform, zero complexity.</p>
+        </div>
+        <div class="features-grid">
+            <div class="feature-card">
+                <div class="feature-icon">💬</div>
+                <h3>Bulk SMS Campaigns</h3>
+                <p>Reach customers via bulk, corporate, or global SMS routes. Per-page billing ensures you only pay for what you use — <?= $currSym ?><?= number_format($smsUnitPrice, 2) ?>/page.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">📧</div>
+                <h3>Drag-and-Drop Email Builder</h3>
+                <p>Design pixel-perfect emails with our visual block editor. Drag sections, reorder with ▲▼ arrows, preview on mobile, and save reusable templates — no code required.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🤖</div>
+                <h3>DeepSeek AI Content Studio</h3>
+                <p>Generate full email templates, SMS copy, and social media captions from a single prompt. Create up to 5 A/B variants, platform-specific personas, and hashtags in seconds.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">📱</div>
+                <h3>Social Media Marketing</h3>
+                <p>Post simultaneously to Facebook, Instagram, LinkedIn, Twitter/X, TikTok, Pinterest and YouTube. Schedule at AI-recommended peak times for maximum reach and engagement.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">📊</div>
+                <h3>Real-time Analytics</h3>
+                <p>Track delivery rates, open rates, click-throughs, social engagement, and failures as they happen. Export reports in CSV with a single click.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">⏰</div>
+                <h3>AI Smart Scheduler</h3>
+                <p>Let AI analyse your audience's activity patterns and recommend the top 3 best posting times per platform. Schedule once, publish everywhere at the perfect moment.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🔐</div>
+                <h3>Enterprise Security</h3>
+                <p>MFA on every account, brute-force protection, IP whitelisting/blacklisting, country firewall, and end-to-end encrypted API credentials.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">💳</div>
+                <h3>Flexible Multi-Gateway Billing</h3>
+                <p>Fund your wallet via Flutterwave (NGN), Payhub virtual bank, PayPal, Stripe, or Plisio crypto. SMS credits, AI tokens, and Social tokens — one unified wallet.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">👥</div>
+                <h3>Contact Management</h3>
+                <p>Import, organise, and segment contacts into phonebooks and email lists. Manage opt-outs and unsubscribes automatically from one unified interface.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🔑</div>
+                <h3>REST API Access</h3>
+                <p>Integrate SMS and email into your own app with our REST API. Generate API keys, manage permissions, and track usage per key.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🗺️</div>
+                <h3>Sender ID Management</h3>
+                <p>Register custom Sender IDs and Caller IDs. Get fast approval and appear as your brand name in every message.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">📅</div>
+                <h3>Campaign Scheduling</h3>
+                <p>Set SMS and email campaigns to fire at any future date and time in any timezone. Never miss the right moment to reach your audience.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ══ HOW IT WORKS ══════════════════════════════════════════════════════════ -->
+<section class="lp-section" id="how-it-works">
+    <div style="max-width:1100px;margin:0 auto">
+        <div class="section-center">
+            <span class="section-label">Simple Process</span>
+            <h2 class="section-title">Up &amp; Running in Minutes</h2>
+            <p class="section-sub">No complex setup. Sign up, connect, and launch — whether it's SMS, email, or social.</p>
+        </div>
+        <div class="steps-grid">
+            <div class="step">
+                <div class="step-num">1</div>
+                <h3>Create Account</h3>
+                <p>Register with your email and verify with a one-time code sent instantly to your inbox. Free to start.</p>
+            </div>
+            <div class="step">
+                <div class="step-num">2</div>
+                <h3>Top Up Wallet</h3>
+                <p>Buy SMS credits, AI tokens, or Social tokens via Flutterwave, Payhub, PayPal, Stripe, or crypto. One wallet, all services.</p>
+            </div>
+            <div class="step">
+                <div class="step-num">3</div>
+                <h3>Connect Channels</h3>
+                <p>Import contacts, link your social accounts, and configure your Sender ID — everything ready from one dashboard.</p>
+            </div>
+            <div class="step">
+                <div class="step-num">4</div>
+                <h3>Generate with AI</h3>
+                <p>Type a one-line brief. DeepSeek AI writes your SMS copy, email template, or social post — complete with hashtags and A/B variants.</p>
+            </div>
+            <div class="step">
+                <div class="step-num">5</div>
+                <h3>Schedule &amp; Send</h3>
+                <p>Post instantly or let AI pick the best time. Launch to every channel at once and watch live delivery and engagement roll in.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ══ SMS PAGE CALCULATION ═══════════════════════════════════════════════════ -->
+<section class="lp-section lp-section-alt" id="fair-billing">
+    <div style="max-width:900px;margin:0 auto;text-align:center">
+        <span class="section-label">Fair Billing</span>
+        <h2 class="section-title">Transparent Per-Page Pricing</h2>
+        <p class="section-sub" style="margin:0 auto 2rem">You are charged per SMS page — not per message. A single page is up to 160 characters. Multi-page messages use 153 characters per page.</p>
+        <div class="sms-calc-section">
+            <div style="display:flex;align-items:center;justify-content:center;gap:.75rem;margin-bottom:.25rem">
+                <span style="font-size:1.5rem">💰</span>
+                <h3 style="margin:0;font-size:1.25rem">Current price: <span style="color:#6c63ff"><?= $currSym ?><?= number_format($smsUnitPrice, 2) ?>/page</span></h3>
+            </div>
+            <p style="color:#b8b8cc;font-size:.88rem;margin-bottom:0">Per-recipient, per-page charge</p>
+            <div class="calc-grid">
+                <div class="calc-item">
+                    <strong><?= $currSym ?><?= number_format($smsUnitPrice, 2) ?></strong>
+                    <small>1 page (≤160 chars)</small>
+                </div>
+                <div class="calc-item">
+                    <strong><?= $currSym ?><?= number_format($smsUnitPrice * 2, 2) ?></strong>
+                    <small>2 pages (161–306 chars)</small>
+                </div>
+                <div class="calc-item">
+                    <strong><?= $currSym ?><?= number_format($smsUnitPrice * 3, 2) ?></strong>
+                    <small>3 pages (307–459 chars)</small>
+                </div>
+                <div class="calc-item">
+                    <strong><?= $currSym ?><?= number_format($smsUnitPrice * 4, 2) ?></strong>
+                    <small>4 pages (460–612 chars)</small>
+                </div>
+            </div>
+            <p style="color:#8888a8;font-size:.8rem;margin-top:1.25rem">
+                After 160 chars, each additional page = 153 characters. Pages × recipients × <?= $currSym ?><?= number_format($smsUnitPrice, 2) ?> = total debit.
+            </p>
+        </div>
+    </div>
+</section>
+
+<!-- ══ EMAIL PLANS ════════════════════════════════════════════════════════════ -->
+<section class="lp-section lp-section-alt" id="email-pricing">
+    <div style="max-width:1200px;margin:0 auto">
+        <div class="section-center">
+            <span class="section-label">Email Plans</span>
+            <h2 class="section-title">Monthly Email Marketing Plans</h2>
+            <p class="section-sub">Choose a monthly email plan with a generous send limit. Scale up any time.</p>
+        </div>
+
+        <?php if (empty($emailPlans)): ?>
+        <div style="text-align:center;padding:3rem;color:#8888a8">
+            <p style="font-size:1.1rem">Contact us for custom email plan pricing.</p>
+            <a href="/register.php" class="btn btn-primary btn-lg" style="margin-top:1.5rem;display:inline-block">Get a Quote</a>
+        </div>
+        <?php else: ?>
+        <?php $epPopularIdx = count($emailPlans) > 1 ? (int)floor(count($emailPlans) / 2) : -1; ?>
+        <div class="pricing-grid">
+        <?php foreach ($emailPlans as $ei => $ep):
+            $isPopular   = ($ei === $epPopularIdx);
+            $featuresArr = json_decode($ep['features'] ?? '[]', true) ?: [];
+        ?>
+            <div class="pricing-card <?= $isPopular ? 'featured' : '' ?>">
+                <?php if ($isPopular): ?><div class="pricing-badge">⭐ Most Popular</div><?php endif; ?>
+                <div class="pricing-period" style="color:#10b981">Monthly Email Plan</div>
+                <div class="pricing-name"><?= htmlspecialchars($ep['name']) ?></div>
+                <div class="pricing-credits" style="color:#10b981"><?= (int)$ep['monthly_email_limit'] > 0 ? number_format((int)$ep['monthly_email_limit']) : '∞' ?></div>
+                <div class="pricing-credits-label"><?= (int)$ep['monthly_email_limit'] > 0 ? 'Emails / Month' : 'Unlimited Emails' ?></div>
+                <div class="pricing-price">
+                    <?= $currSym ?><?= number_format((float)$ep['price'], 2) ?>
+                    <small>/month</small>
+                </div>
+                <?php if (!empty($ep['description'])): ?>
+                <p style="color:#b8b8cc;font-size:.85rem;margin-bottom:.75rem;line-height:1.5"><?= htmlspecialchars($ep['description']) ?></p>
+                <?php endif; ?>
+                <ul class="pricing-features">
+                    <li><span class="check" style="color:#10b981">✓</span><?= (int)$ep['monthly_email_limit'] > 0 ? number_format((int)$ep['monthly_email_limit']) . ' emails/month' : 'Unlimited emails/month' ?></li>
+                    <li><span class="check" style="color:#10b981">✓</span>Template builder included</li>
+                    <li><span class="check" style="color:#10b981">✓</span>Real-time open/click tracking</li>
+                    <li><span class="check" style="color:#10b981">✓</span>Unsubscribe management</li>
+                    <?php foreach (array_slice($featuresArr, 0, 2) as $f): ?>
+                    <li><span class="check" style="color:#10b981">✓</span><?= htmlspecialchars($f) ?></li>
+                    <?php endforeach; ?>
+                </ul>
+                <a href="/register.php" class="btn <?= $isPopular ? 'btn-primary' : 'btn-outline' ?>" style="width:100%;text-align:center;display:block;border-radius:50px;padding:.75rem 1.5rem;<?= $isPopular ? '' : 'border-color:rgba(16,185,129,.5);color:#10b981' ?>">
+                    Subscribe Now
+                </a>
+            </div>
+        <?php endforeach; ?>
+        </div>
+        <?php endif; ?>
+    </div>
+</section>
+
+<!-- ══ TESTIMONIALS ═══════════════════════════════════════════════════════════ -->
+<section class="lp-section lp-section-alt">
+    <div style="max-width:1100px;margin:0 auto">
+        <div class="section-center">
+            <span class="section-label">Trusted By</span>
+            <h2 class="section-title">What Our Customers Say</h2>
+        </div>
+        <div class="trust-grid">
+            <div class="trust-card">
+                <p>"We switched from another provider and immediately noticed the delivery speed. Our OTP messages now arrive in under 3 seconds. The AI copy feature is a game changer."</p>
+                <div class="trust-author">
+                    <div class="trust-avatar">AO</div>
+                    <div><div class="trust-name">Adebayo O.</div><div class="trust-role">CTO, FinTech Startup</div></div>
+                </div>
+            </div>
+            <div class="trust-card">
+                <p>"The social media scheduler saved us hours every week. I type a brief and the AI produces platform-ready captions for Instagram, LinkedIn, and Twitter — simultaneously."</p>
+                <div class="trust-author">
+                    <div class="trust-avatar">CU</div>
+                    <div><div class="trust-name">Chioma U.</div><div class="trust-role">Marketing Manager, Retail Chain</div></div>
+                </div>
+            </div>
+            <div class="trust-card">
+                <p>"The drag-and-drop email builder is the cleanest I've used. Reordering blocks is instant, the mobile preview is accurate, and the AI fills the copy in seconds."</p>
+                <div class="trust-author">
+                    <div class="trust-avatar">EK</div>
+                    <div><div class="trust-name">Emeka K.</div><div class="trust-role">Co-founder, E-commerce Platform</div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ══ SOCIAL & AI SPOTLIGHT ════════════════════════════════════════════════ -->
+<section class="lp-section" id="social">
+    <div style="max-width:1100px;margin:0 auto">
+        <div class="section-center">
+            <span class="section-label">New Feature</span>
+            <h2 class="section-title">One Brief. Seven Platforms.<br>Zero Effort.</h2>
+            <p class="section-sub">Our AI Social Media Marketing suite lets you write once and publish everywhere — powered by DeepSeek AI and Ayrshare's unified social API.</p>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.5rem;margin-top:1rem">
+            <div class="feature-card" style="background:rgba(108,99,255,.07);border-color:rgba(108,99,255,.25)">
+                <div class="feature-icon">✍️</div>
+                <h3>AI Writes Your Posts</h3>
+                <p>Enter your goal, brand name, and target audience. DeepSeek generates platform-specific captions — professional for LinkedIn, punchy for Twitter/X, trendy for TikTok — with hashtags included.</p>
+            </div>
+            <div class="feature-card" style="background:rgba(0,212,255,.05);border-color:rgba(0,212,255,.2)">
+                <div class="feature-icon">🔀</div>
+                <h3>A/B Variant Testing</h3>
+                <p>Generate up to 5 caption variants per platform. Pick your favourite, edit inline, then publish or schedule — all from one screen.</p>
+            </div>
+            <div class="feature-card" style="background:rgba(16,185,129,.05);border-color:rgba(16,185,129,.2)">
+                <div class="feature-icon">📡</div>
+                <h3>Post to 7 Platforms at Once</h3>
+                <p>Facebook · Instagram · LinkedIn · Twitter/X · TikTok · Pinterest · YouTube. Connect all accounts once; publish with a single click forever after.</p>
+            </div>
+            <div class="feature-card" style="background:rgba(251,191,36,.05);border-color:rgba(251,191,36,.2)">
+                <div class="feature-icon">🕐</div>
+                <h3>AI Best-Time Scheduling</h3>
+                <p>Our smart scheduler analyses your followers' activity and recommends the top 3 optimal posting windows — then queues your post automatically.</p>
+            </div>
+        </div>
+        <div style="text-align:center;margin-top:2.5rem">
+            <a href="/register.php" class="btn btn-primary btn-lg">Start with Social Marketing</a>
+        </div>
+    </div>
+</section>
+
+<!-- ══ CTA ════════════════════════════════════════════════════════════════════ -->
+<section class="cta-section" id="contact">
+    <div style="max-width:700px;margin:0 auto">
+        <h2>Ready to Reach Your Audience Everywhere?</h2>
+        <p>Join hundreds of businesses already sending smarter with <?= htmlspecialchars($appName) ?>. SMS, email, and social — all powered by AI. Sign up in seconds — no credit card required to register.</p>
+        <div class="cta-btns">
+            <a href="/register.php" class="btn btn-primary btn-lg">Create Free Account</a>
+            <a href="/login.php" class="btn-outline btn-lg">Sign In</a>
+        </div>
+    </div>
+</section>
+
+<!-- ══ FOOTER ═════════════════════════════════════════════════════════════════ -->
+<footer class="lp-footer">
+    <div class="lp-footer-grid">
+        <div class="lp-footer-brand">
+            <strong>📧 <?= htmlspecialchars($appName) ?></strong>
+            <p>An omni-channel marketing platform built for Nigerian businesses and beyond. Bulk SMS, AI email builder, social media marketing, and DeepSeek AI content — all in one place.</p>
+        </div>
+        <div>
+            <h4>Platform</h4>
+            <ul>
+                <li><a href="#features">Features</a></li>
+                <li><a href="#fair-billing">SMS Pricing</a></li>
+                <li><a href="#email-pricing">Email Plans</a></li>
+                <li><a href="#how-it-works">How It Works</a></li>
+            </ul>
+        </div>
+        <div>
+            <h4>Services</h4>
+            <ul>
+                <li><a href="/login.php">Bulk SMS</a></li>
+                <li><a href="/login.php">Email Builder</a></li>
+                <li><a href="/login.php">Social Marketing</a></li>
+                <li><a href="/login.php">AI Content Studio</a></li>
+            </ul>
+        </div>
+        <div>
+            <h4>Account</h4>
+            <ul>
+                <li><a href="/register.php">Register</a></li>
+                <li><a href="/login.php">Login</a></li>
+                <li><a href="/billing.php">Buy Credits</a></li>
+            </ul>
+        </div>
+        <div>
+            <h4>Support</h4>
+            <ul>
+                <li><a href="mailto:support@<?= strtolower(str_replace(' ', '', $appName)) ?>.com">Email Support</a></li>
+                <li><a href="/login.php">Admin Panel</a></li>
+            </ul>
+        </div>
+    </div>
+    <div class="lp-footer-bottom">
+        <p>© <?= date('Y') ?> <?= htmlspecialchars($appName) ?>. All rights reserved.</p>
+        <p style="color:#8888a8">Powered by PhilmoreHost</p>
+    </div>
+</footer>
+
+<script>
+// Theme toggle
+const themeToggle = document.getElementById('themeToggle');
+const themeIcon   = document.getElementById('themeIcon');
+const html        = document.documentElement;
+
+themeToggle.addEventListener('click', function() {
+    const current = html.getAttribute('data-theme');
+    const next    = current === 'dark' ? 'light' : 'dark';
+    html.setAttribute('data-theme', next);
+    themeIcon.textContent = next === 'dark' ? '🌙' : '☀️';
+    document.cookie = 'theme=' + next + ';path=/;max-age=31536000';
+});
+
+// Smooth scroll for anchor links
+document.querySelectorAll('a[href^="#"]').forEach(a => {
+    a.addEventListener('click', e => {
+        const target = document.querySelector(a.getAttribute('href'));
+        if (target) { e.preventDefault(); target.scrollIntoView({ behavior: 'smooth' }); }
+    });
+});
+
+// Navbar glass on scroll
+window.addEventListener('scroll', () => {
+    document.querySelector('.lp-nav').style.background =
+        window.scrollY > 50 ? 'rgba(10,10,20,.98)' : 'rgba(10,10,20,.85)';
+});
+</script>
+</body>
+</html>
+

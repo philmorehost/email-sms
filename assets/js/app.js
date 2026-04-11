@@ -8,6 +8,7 @@
 
 // ─── DOM Ready ────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+    initThemeToggle();
     initSidebar();
     initTabs();
     initToasts();
@@ -20,6 +21,23 @@ document.addEventListener('DOMContentLoaded', () => {
     initFormValidation();
     initButtonLoaders();
 });
+
+// ─── Theme Toggle ─────────────────────────────────────────────────────────────
+function initThemeToggle() {
+    const btn = document.getElementById('themeToggle');
+    if (!btn) return;
+    const html = document.documentElement;
+    function apply(theme) {
+        html.setAttribute('data-theme', theme);
+        btn.querySelector('.theme-icon').textContent = theme === 'dark' ? '🌙' : '☀️';
+    }
+    btn.addEventListener('click', () => {
+        const current = html.getAttribute('data-theme') || 'dark';
+        const next = current === 'dark' ? 'light' : 'dark';
+        apply(next);
+        document.cookie = `theme=${next};path=/;max-age=${60 * 60 * 24 * 365}`;
+    });
+}
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 function initSidebar() {
