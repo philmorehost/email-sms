@@ -109,6 +109,9 @@ $isSuperAdmin = ($user['role'] ?? '') === 'superadmin';
 
         <div class="nav-section">
             <span class="nav-section-title">Admin — Settings</span>
+            <a href="/admin/profile.php" class="nav-item <?= $activePage === 'admin_profile' ? 'active' : '' ?>">
+                <span class="nav-icon">👤</span><span class="nav-label">My Profile</span>
+            </a>
             <a href="/admin/ai-settings.php" class="nav-item <?= $activePage === 'ai_settings' ? 'active' : '' ?>">
                 <span class="nav-icon">🤖</span><span class="nav-label">AI Settings</span>
             </a>
@@ -170,7 +173,8 @@ $isSuperAdmin = ($user['role'] ?? '') === 'superadmin';
             <span><?= number_format($sidebarSocBalance) ?> Social Tokens</span>
         </a>
         <?php endif; ?>
-        <div class="user-info">
+        <div class="user-info" style="<?= $isAdmin ? 'cursor:pointer' : '' ?>"
+             <?= $isAdmin ? 'onclick="window.location=\'/admin/profile.php\'"' : '' ?> title="<?= $isAdmin ? 'Edit profile' : '' ?>">
             <span class="user-avatar"><?= strtoupper(substr($user['username'] ?? 'U', 0, 1)) ?></span>
             <div>
                 <div class="user-name"><?= htmlspecialchars($user['username'] ?? '') ?></div>

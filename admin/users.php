@@ -40,8 +40,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $username = sanitize($_POST['username'] ?? '');
         $email    = sanitizeEmail($_POST['email'] ?? '');
         $password = $_POST['password'] ?? '';
-        $role     = $_POST['role'] ?? 'user';
-        if (!in_array($role, ['admin', 'user'], true)) $role = 'user';
+        // Only allow creating regular users from this page
+        $role = 'user';
 
         if ($username === '' || $email === '' || $password === '') {
             setFlash('Username, email and password are required.', 'error');
@@ -62,6 +62,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($action === 'toggle_suspend') {
         $uid = (int)($_POST['user_id'] ?? 0);
+        // Refuse to suspend admin/superadmin accounts
+        try {
+            $targetRole = $db->prepare("SELECT role FROM users WHERE id=:id")->execute([':id'=>$uid]) ? $db->query("SELECT role FROM users WHERE id=$uid")->fetchColumn() : '';
+            $stmt2 = $db->prepare("SELECT role FROM users WHERE id=:id");
+            $stmt2->execute([':id' => $uid]);
+            $targetRole = $stmt2->fetchColumn();
+            if (in_array($targetRole, ['admin','superadmin'], true)) {
+                setFlash('Admin accounts cannot be managed from this page.', 'error');
+                redirect('/admin/users.php');
+            }
+        } catch (\Exception $e) {}
         try {
             $db->prepare("UPDATE users SET is_suspended = NOT is_suspended WHERE id = :id")
                ->execute([':id' => $uid]);
@@ -75,7 +86,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'set_role') {
         $uid  = (int)($_POST['user_id'] ?? 0);
         $role = $_POST['role'] ?? 'user';
-        if (!in_array($role, ['superadmin', 'admin', 'user'], true)) $role = 'user';
+        // Only user role is settable from this page; admin promotion done via profile page
+        if ($role !== 'user') $role = 'user';
+        // Protect existing admin/superadmin rows from being demoted here
+        try {
+            $stmt3 = $db->prepare("SELECT role FROM users WHERE id=:id");
+            $stmt3->execute([':id' => $uid]);
+            $existingRole = $stmt3->fetchColumn();
+            if (in_array($existingRole, ['admin','superadmin'], true)) {
+                setFlash('Admin accounts cannot be managed from this page.', 'error');
+                redirect('/admin/users.php');
+            }
+        } catch (\Exception $e) {}
         try {
             $db->prepare("UPDATE users SET role = :r WHERE id = :id")
                ->execute([':r' => $role, ':id' => $uid]);
@@ -88,6 +110,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($action === 'toggle_mfa') {
         $uid = (int)($_POST['user_id'] ?? 0);
+        // Protect admin accounts
+        try {
+            $stmt4 = $db->prepare("SELECT role FROM users WHERE id=:id");
+            $stmt4->execute([':id' => $uid]);
+            if (in_array($stmt4->fetchColumn(), ['admin','superadmin'], true)) {
+                setFlash('Admin accounts cannot be managed from this page.', 'error');
+                redirect('/admin/users.php');
+            }
+        } catch (\Exception $e) {}
         try {
             $db->prepare("UPDATE users SET mfa_enabled = NOT mfa_enabled WHERE id = :id")
                ->execute([':id' => $uid]);
@@ -103,6 +134,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($uid === (int)($user['id'] ?? 0)) {
             setFlash('You cannot delete your own account.', 'error');
         } else {
+            // Protect admin/superadmin accounts from deletion via users page
+            try {
+                $stmt5 = $db->prepare("SELECT role FROM users WHERE id=:id");
+                $stmt5->execute([':id' => $uid]);
+                $delRole = $stmt5->fetchColumn();
+                if (in_array($delRole, ['admin','superadmin'], true)) {
+                    setFlash('Admin accounts cannot be deleted from this page.', 'error');
+                    redirect('/admin/users.php');
+                }
+            } catch (\Exception $e) {}
             try {
                 $db->prepare("DELETE FROM users WHERE id = :id")->execute([':id' => $uid]);
                 setFlash('User deleted.');
@@ -165,15 +206,15 @@ try {
     $stats = $db->query(
         "SELECT
             COUNT(*) AS total,
-            SUM(role IN ('admin','superadmin')) AS admins,
             SUM(is_suspended = 1) AS suspended
-         FROM users"
+         FROM users
+         WHERE role NOT IN ('admin','superadmin')"
     )->fetch();
     $activeSubs = $db->query(
         "SELECT COUNT(*) FROM user_subscriptions WHERE status = 'active'"
     )->fetchColumn();
 } catch (\Exception $e) {
-    $stats      = ['total' => 0, 'admins' => 0, 'suspended' => 0];
+    $stats      = ['total' => 0, 'suspended' => 0];
     $activeSubs = 0;
 }
 
@@ -193,10 +234,6 @@ require_once __DIR__ . '/../includes/layout_header.php';
     <div class="stat-card">
         <div class="stat-value"><?= (int)($stats['total'] ?? 0) ?></div>
         <div class="stat-label">Total Users</div>
-    </div>
-    <div class="stat-card">
-        <div class="stat-value"><?= (int)($stats['admins'] ?? 0) ?></div>
-        <div class="stat-label">Admins</div>
     </div>
     <div class="stat-card">
         <div class="stat-value"><?= (int)($stats['suspended'] ?? 0) ?></div>
@@ -229,13 +266,6 @@ require_once __DIR__ . '/../includes/layout_header.php';
                 <div class="form-group">
                     <label class="form-label">Password</label>
                     <input type="password" name="password" class="form-control" required minlength="8">
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Role</label>
-                    <select name="role" class="form-control">
-                        <option value="user">User</option>
-                        <option value="admin">Admin</option>
-                    </select>
                 </div>
                 <div class="form-group" style="align-self:flex-end">
                     <button type="submit" class="btn btn-primary">Create User</button>
@@ -308,17 +338,13 @@ require_once __DIR__ . '/../includes/layout_header.php';
                                 <?= $u['is_suspended'] ? 'Unsuspend' : 'Suspend' ?>
                             </button>
                         </form>
-                        <!-- Set Role -->
+                        <!-- Set Role (user only from this page) -->
                         <form method="POST" action="/admin/users.php" style="display:inline;display:flex;gap:.25rem">
                             <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken()) ?>">
                             <input type="hidden" name="action" value="set_role">
                             <input type="hidden" name="user_id" value="<?= (int)$u['id'] ?>">
-                            <select name="role" class="form-control form-control-sm" style="width:auto">
-                                <option value="user" <?= $u['role'] === 'user' ? 'selected' : '' ?>>User</option>
-                                <option value="admin" <?= $u['role'] === 'admin' ? 'selected' : '' ?>>Admin</option>
-                                <option value="superadmin" <?= $u['role'] === 'superadmin' ? 'selected' : '' ?>>Superadmin</option>
-                            </select>
-                            <button type="submit" class="btn btn-sm btn-secondary">Set</button>
+                            <input type="hidden" name="role" value="user">
+                            <button type="submit" class="btn btn-sm btn-secondary" title="Reset to user role">Reset Role</button>
                         </form>
                         <!-- Toggle MFA -->
                         <form method="POST" action="/admin/users.php" style="display:inline">
